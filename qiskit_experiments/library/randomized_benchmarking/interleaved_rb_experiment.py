@@ -54,6 +54,7 @@ class InterleavedRB(StandardRB):
         num_samples: int = 3,
         seed: Optional[Union[int, Generator]] = None,
         full_sampling: bool = False,
+        interleaved_group_element: Optional[Clifford] = None,
     ):
         """Initialize an interleaved randomized benchmarking experiment.
 
@@ -71,8 +72,11 @@ class InterleavedRB(StandardRB):
                            all lengths. If False for sample of lengths longer
                            sequences are constructed by appending additional
                            Clifford samples to shorter sequences.
+            interleaved_group_element: The `Clifford` group element corresponding
+            to the given `interleaved_element`, in case it cannot be computed
+            automatically from `interleaved_element`.
         """
-        self._set_interleaved_element(interleaved_element)
+        self._set_interleaved_element(interleaved_element, interleaved_group_element)
         super().__init__(qubits, lengths, num_samples, seed, full_sampling)
 
     def _sample_circuits(self, lengths, seed=None):
@@ -109,22 +113,25 @@ class InterleavedRB(StandardRB):
             new_element_list.append(self._interleaved_element)
         return new_element_list
 
-    def _set_interleaved_element(self, interleaved_element):
+    def _set_interleaved_element(self, interleaved_element, interleaved_group_element=None):
         """Handle the various types of the interleaved element
 
         Args:
             interleaved_element: The element to interleave
+            interleaved_group_element: The corresponding Clifford group element,
+            or None if conversion is to be done automatically
 
         Raises:
             QiskitError: if there is no known conversion of interleaved_element
             to a Clifford group element
         """
-        try:
-            interleaved_element_op = Clifford(interleaved_element)
-            self._interleaved_element = (interleaved_element, interleaved_element_op)
-        except QiskitError as error:
-            raise QiskitError(
-                "Interleaved element {} could not be converted to Clifford element".format(
-                    interleaved_element.name
-                )
-            ) from error
+        if interleaved_group_element is None:
+            try:
+                interleaved_group_element = Clifford(interleaved_element)
+            except QiskitError as error:
+                raise QiskitError(
+                    "Interleaved element {} could not be converted to Clifford element".format(
+                        interleaved_element.name
+                    )
+                ) from error
+        self._interleaved_element = (interleaved_element, interleaved_group_element)
