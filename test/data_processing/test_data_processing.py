@@ -81,11 +81,11 @@ class DataProcessorTest(BaseDataProcessorTest):
         data_processor = DataProcessor("counts")
 
         datum, error = data_processor(self.exp_data_lvl2.data(0))
-        self.assertEqual(datum, [{"00": 4, "10": 6}])
+        self.assertEqual(datum, {"00": 4, "10": 6})
         self.assertIsNone(error)
 
         datum, error, history = data_processor.call_with_history(self.exp_data_lvl2.data(0))
-        self.assertEqual(datum, [{"00": 4, "10": 6}])
+        self.assertEqual(datum, {"00": 4, "10": 6})
         self.assertEqual(history, [])
 
     def test_to_real(self):
@@ -322,7 +322,7 @@ class TestAveragingAndSVD(BaseDataProcessorTest):
                 [[0.9, 0.9], [-1.1, 1.0]],
             ]
         )
-        self._sig_gs = np.array([[1.0], [-1.0]]) / np.sqrt(2.0)
+        self._sig_gs = np.array([1.0, -1.0]) / np.sqrt(2.0)
 
         circ_gs = ExperimentResultData(
             memory=[
@@ -332,7 +332,7 @@ class TestAveragingAndSVD(BaseDataProcessorTest):
                 [[-0.9, -0.9], [1.1, -1.0]],
             ]
         )
-        self._sig_es = np.array([[-1.0], [1.0]]) / np.sqrt(2.0)
+        self._sig_es = np.array([-1.0, 1.0]) / np.sqrt(2.0)
 
         circ_x90p = ExperimentResultData(
             memory=[
@@ -342,7 +342,7 @@ class TestAveragingAndSVD(BaseDataProcessorTest):
                 [[1.0, 1.0], [-1.0, 1.0]],
             ]
         )
-        self._sig_x90 = np.array([[0], [0]])
+        self._sig_x90 = np.array([0, 0])
 
         circ_x45p = ExperimentResultData(
             memory=[
@@ -352,7 +352,7 @@ class TestAveragingAndSVD(BaseDataProcessorTest):
                 [[1.0, 1.0], [-1.0, 1.0]],
             ]
         )
-        self._sig_x45 = np.array([[0.5], [-0.5]]) / np.sqrt(2.0)
+        self._sig_x45 = np.array([0.5, -0.5]) / np.sqrt(2.0)
 
         res_es = ExperimentResult(
             shots=4,
@@ -460,7 +460,7 @@ class TestAveragingAndSVD(BaseDataProcessorTest):
                 self._sig_x90.reshape(1, 2),
                 self._sig_x45.reshape(1, 2),
             )
-        ).T
+        )
 
         # Test processing of all data
         processed = processor(self.data.data())[0]
@@ -480,7 +480,7 @@ class TestAveragingAndSVD(BaseDataProcessorTest):
         processor.train([self.data.data(idx) for idx in [0, 1]])
         self.assertTrue(processor.is_trained)
 
-        all_expected = np.array([[0.0, 1.0, 0.5, 0.75], [1.0, 0.0, 0.5, 0.25]])
+        all_expected = np.array([[0.0, 1.0], [1.0, 0.0], [0.5, 0.5], [0.75, 0.25]])
 
         # Test processing of all data
         processed = processor(self.data.data())[0]
@@ -559,7 +559,7 @@ class TestAvgDataAndSVD(BaseDataProcessorTest):
         processor.train([self.data.data(idx) for idx in [0, 1]])
         self.assertTrue(processor.is_trained)
 
-        all_expected = np.array([[0.0, 1.0, 0.5, 0.75], [1.0, 0.0, 0.5, 0.25]])
+        all_expected = np.array([[0.0, 1.0], [1.0, 0.0], [0.5, 0.5], [0.75, 0.25]])
 
         # Test processing of all data
         processed = processor(self.data.data())[0]

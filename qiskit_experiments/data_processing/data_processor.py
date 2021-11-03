@@ -12,7 +12,10 @@
 
 """Actions done on the data to bring it in a usable form."""
 
-from typing import Any, Dict, List, Set, Tuple, Union
+import itertools
+from typing import Any, Dict, List, Set, Tuple, Union, Generator, Iterator
+
+import numpy as np
 
 from qiskit_experiments.data_processing.data_action import DataAction, TrainableDataAction
 from qiskit_experiments.data_processing.exceptions import DataProcessorError
@@ -36,7 +39,7 @@ class DataProcessor:
     def __init__(
         self,
         input_key: str,
-        data_actions: List[DataAction] = None,
+        data_actions: Union[DataAction, TrainableDataAction] = None,
     ):
         """Create a chain of data processing actions.
 
@@ -45,12 +48,11 @@ class DataProcessor:
                 will find the data to process.
             data_actions: A list of data processing actions to construct this data processor with.
                 If None is given an empty DataProcessor will be created.
-            to_array: Boolean indicating if the input data will be converted to a numpy array.
         """
         self._input_key = input_key
         self._nodes = data_actions if data_actions else []
 
-    def append(self, node: DataAction):
+    def append(self, node: Union[DataAction, TrainableDataAction]):
         """
         Append new data action node to this data processor.
 
@@ -125,28 +127,45 @@ class DataProcessor:
                 then all nodes in the data processing chain will be called.
 
         Returns:
-            datum_ and history if with_history is True or datum_ if with_history is False.
+            When ``with_history`` is ``False`` it returns a tuple of array-like of data and error.
+            Otherwise it returns a tuple of above with a list of intermediate data at each step.
         """
         if call_up_to_node is None:
             call_up_to_node = len(self._nodes)
 
-        datum_, error_ = self._data_extraction(data), None
+        # This is generator
+        gen_datum = self._data_extraction(data)
 
         history = []
-        for index, node in enumerate(self._nodes):
+        for index, node in enumerate(self._nodes[:call_up_to_node]):
+            # Create pipeline of data processing
+            gen_datum = node(gen_datum)
 
-            if index < call_up_to_node:
-                datum_, error_ = node(datum_, error_)
+            if with_history and (history_nodes is None or index in history_nodes):
+                # make sure not to kill pipeline by execution
+                gen_datum, gen_datum_copy = itertools.tee(gen_datum)
+                out_values, out_errors = execute_pipeline(gen_datum_copy)
+                history.append((node.__class__.__name__, out_values, out_errors, index))
 
-                if with_history and (
-                    history_nodes is None or (history_nodes and index in history_nodes)
-                ):
-                    history.append((node.__class__.__name__, datum_, error_, index))
+        # Execute pipeline
+        out_values, out_errors = execute_pipeline(gen_datum)
+
+        # Return only first element if length=1, e.g. [[0, 1]] -> [0, 1]
+        if out_values.shape[0] == 1:
+            out_values = out_values[0]
+
+        # Return only first element if length=1, e.g. [[0, 1]] -> [0, 1]
+        if out_errors.shape[0] == 1:
+            out_errors = out_errors[0]
+
+        # Return None if error is not computed
+        if np.isnan(out_errors).all():
+            out_errors = None
 
         if with_history:
-            return datum_, error_, history
+            return out_values, out_errors, history
         else:
-            return datum_, error_
+            return out_values, out_errors
 
     def train(self, data: List[Dict[str, Any]]):
         """Train the nodes of the data processor.
@@ -154,14 +173,13 @@ class DataProcessor:
         Args:
             data: The data to use to train the data processor.
         """
-
         for index, node in enumerate(self._nodes):
             if isinstance(node, TrainableDataAction):
                 if not node.is_trained:
                     # Process the data up to the untrained node.
-                    node.train(self._call_internal(data, call_up_to_node=index)[0])
+                    node.train(*self._call_internal(data, call_up_to_node=index))
 
-    def _data_extraction(self, data: Union[Dict, List[Dict]]) -> List:
+    def _data_extraction(self, data: Union[Dict, List[Dict]]) -> Generator:
         """Extracts the data on which to run the nodes.
 
         If the datum is a list of dicts then the data under self._input_key is extracted
@@ -172,35 +190,84 @@ class DataProcessor:
         Args:
             data: A list of such dicts where the data is contained under the key self._input_key.
 
-        Returns:
-            The data formatted in such a way that it is ready to be processed by the nodes.
+        Yields:
+            A tuple of numpy array object representing a data and error.
 
         Raises:
             DataProcessorError:
                 - If the input datum is not a list or a dict.
-                - If the data processor received a single datum but requires all the data to
-                  process it properly.
                 - If the input key of the data processor is not contained in the data.
         """
         if isinstance(data, dict):
             data = [data]
 
-        try:
-            data_ = [_datum[self._input_key] for _datum in iter(data)]
-        except KeyError as error:
-            raise DataProcessorError(
-                f"The input key {self._input_key} was not found in the input datum."
-            ) from error
-        except TypeError as error:
-            raise DataProcessorError(
-                f"{self.__class__.__name__} only extracts data from "
-                f"lists or dicts, received {type(data)}."
-            ) from error
+        for datum in data:
+            try:
+                target = datum[self._input_key]
 
-        return data_
+                # returns data and initial error
+                if isinstance(target, dict):
+                    # likely level2 data, forcibly convert into array
+                    yield np.asarray([target], dtype=object), np.asarray([np.nan], dtype=float)
+                else:
+                    try:
+                        # level1 or below
+                        nominal_arr = np.asarray(target, dtype=float)
+                        stdev_arr = np.full_like(target, np.nan, dtype=float)
+                    except TypeError:
+                        # level2 memory ["00", "11", "01", ...]
+                        nominal_arr = np.asarray(target, dtype=object)
+                        stdev_arr = np.asarray([np.nan], dtype=float)
+                    yield nominal_arr, stdev_arr
+
+            except KeyError as error:
+                raise DataProcessorError(
+                    f"The input key {self._input_key} was not found in the input datum."
+                ) from error
+            except TypeError as error:
+                raise DataProcessorError(
+                    f"{self.__class__.__name__} only extracts data from "
+                    f"lists or dicts, received {type(data)}."
+                ) from error
 
     def __repr__(self):
         """String representation of data processors."""
         names = ", ".join(node.__class__.__name__ for node in self._nodes)
 
         return f"{self.__class__.__name__}(input_key={self._input_key}, nodes=[{names}])"
+
+
+def execute_pipeline(gen_datum: Iterator) -> Tuple[np.ndarray, np.ndarray]:
+    """Execute processing pipeline and return processed data array.
+
+    Args:
+        gen_datum: A generator to sequentially return datum.
+
+    Returns:
+        A tuple of nominal values and standard errors.
+    """
+    out_values, out_errors = list(zip(*gen_datum))
+
+    try:
+        # try to convert into float object for performance
+        out_values = np.asarray(out_values, dtype=float)
+    except TypeError:
+        # if not convert into arbitrary array
+        out_values = np.asarray(out_values, dtype=object)
+
+    # convert into 1D array e.g. [[0], [1], ...] -> [0, 1, ...]
+    if len(out_values.shape) == 2 and out_values.shape[1] == 1:
+        out_values = out_values[:, 0]
+
+    try:
+        # try to convert into float object for performance
+        out_errors = np.asarray(out_errors, dtype=float)
+    except TypeError:
+        # if not convert into arbitrary array
+        out_errors = np.asarray(out_errors, dtype=object)
+
+    # convert into 1D array e.g. [[0], [1], ...] -> [0, 1, ...]
+    if len(out_errors.shape) == 2 and out_errors.shape[1] == 1:
+        out_errors = out_errors[:, 0]
+
+    return out_values, out_errors

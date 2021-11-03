@@ -13,7 +13,9 @@
 """Defines the steps that can be used to analyse data."""
 
 from abc import ABCMeta, abstractmethod
-from typing import Any, List, Optional, Tuple
+from typing import Generator, Iterator, Optional
+
+import numpy as np
 
 
 class DataAction(metaclass=ABCMeta):
@@ -29,50 +31,40 @@ class DataAction(metaclass=ABCMeta):
         """
         self._validate = validate
 
-    @abstractmethod
-    def _process(self, datum: Any, error: Optional[Any] = None) -> Tuple[Any, Any]:
-        """
-        Applies the data processing step to the datum.
+    def _process(self, gen_datum: Iterator) -> Generator:
+        """Applies the data processing step to the datum.
 
         Args:
-            datum: A single item of data which will be processed.
-            error: An optional error estimation on the datum that can be further propagated.
+            gen_datum: A generator of unprocessed data. Each entry is a tuple of data and error.
 
-        Returns:
-            processed data: The data that has been processed along with the propagated error.
+        Yields:
+            A tuple of processed data and error.
         """
+        yield from gen_datum
 
-    @abstractmethod
-    def _format_data(self, datum: Any, error: Optional[Any] = None) -> Tuple[Any, Any]:
-        """Format and validate the input.
+    def _format_data(self, gen_datum: Iterator) -> Generator:
+        """Validate and format the input.
 
-        Check that the given data and error has the correct structure. This method may
-        additionally change the data type, e.g. converting a list to a numpy array.
+        Check that the given data and error have the correct structure.
 
         Args:
-            datum: The data instance to check and format.
-            error: An optional error estimation on the datum to check and format.
+            gen_datum: A generator of unformatted data. Each entry is a tuple of data and error.
 
-        Returns:
-            datum, error: The formatted datum and its optional error.
-
-        Raises:
-            DataProcessorError: If either the data or the error do not have the proper format.
+        Yields:
+            A tuple of formatted data and error.
         """
+        yield from gen_datum
 
-    def __call__(self, data: Any, error: Optional[Any] = None) -> Tuple[Any, Any]:
+    def __call__(self, gen_datum: Iterator) -> Generator:
         """Call the data action of this node on the data and propagate the error.
 
         Args:
-            data: The data to process. The action nodes in the data processor will
-                raise errors if the data does not have the appropriate format.
-            error: An optional error estimation on the datum that can be further processed.
+            gen_datum: A generator of raw data. Each entry is a tuple of data and error.
 
-        Returns:
-            processed data: The data processed by self as a tuple of processed datum and
-                optionally the propagated error estimate.
+        Yields:
+            A generator that implements a data processing pipeline.
         """
-        return self._process(*self._format_data(data, error))
+        yield from self._process(self._format_data(gen_datum))
 
     def __repr__(self):
         """String representation of the node."""
@@ -94,11 +86,12 @@ class TrainableDataAction(DataAction):
         """
 
     @abstractmethod
-    def train(self, data: List[Any]):
+    def train(self, full_val_arr: np.ndarray, full_err_arr: Optional[np.ndarray] = None):
         """Train a DataAction.
 
         Certain data processing nodes, such as a SVD, require data to first train.
 
         Args:
-            data: A list of datum. Each datum is a point used to train the node.
+            full_val_arr: A list of values. Each datum will be converted to a 2D array.
+            full_err_arr: A list of errors. Each datm will be converted to a 2D array.
         """

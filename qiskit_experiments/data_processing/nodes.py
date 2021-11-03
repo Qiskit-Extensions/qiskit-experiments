@@ -10,15 +10,18 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
+# pylint: disable=arguments-differ
+
 """Different data analysis steps."""
 
-from abc import abstractmethod
 from numbers import Number
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import List, Tuple, Union, Sequence, Generator, Iterator, Optional
+
 import numpy as np
 
 from qiskit_experiments.data_processing.data_action import DataAction, TrainableDataAction
 from qiskit_experiments.data_processing.exceptions import DataProcessorError
+from .data_processor import execute_pipeline
 
 
 class AverageData(DataAction):
@@ -30,76 +33,126 @@ class AverageData(DataAction):
         Args:
             axis: The axis along which to average.
             validate: If set to False the DataAction will not validate its input.
+
+        Note:
+            Axis depends on data type. ``axis = 0`` indicates averaging over
+            different circuits in the experiment data. Level2 data has only this axis.
+            As a reminder the table below shows that various data levels in Qiskit
+            and their dimension. The AverageData node will simply average the
+            given array over the specified axis.
+
+                ============  =============  =====
+                `meas_level`  `meas_return`  shape
+                ============  =============  =====
+                0             `single`       np.ndarray[shots, memory_slots, memory_slot_size]
+                0             `avg`          np.ndarray[memory_slots, memory_slot_size]
+                1             `single`       np.ndarray[shots, memory_slots]
+                1             `avg`          np.ndarray[memory_slots]
+                2             `memory=True`  list
+                ============  =============  =====
+
         """
         super().__init__(validate)
         self._axis = axis
 
-    def _format_data(self, datum: Any, error: Optional[Any] = None):
-        """Format the data into numpy arrays."""
-        datum = np.asarray(datum, dtype=float)
+    def _format_data(self, gen_datum: Iterator) -> Generator:
+        """Format and validate.
 
-        if self._validate:
-            if len(datum.shape) <= self._axis:
-                raise DataProcessorError(
-                    f"Cannot average the {len(datum.shape)} dimensional "
-                    f"array along axis {self._axis}."
-                )
+        Args:
+             gen_datum: A pipeline.
 
-        if error is not None:
-            error = np.asarray(error, dtype=float)
+        Yields:
+            A formatted value array. Error is discarded.
 
-        return datum, error
+        Raises:
+            DataProcessorError: When non-existing data axis is specified.
+        """
+        for value_array, error_array in gen_datum:
+            value_array = np.asarray(value_array, dtype=float)
+            error_array = np.asarray(error_array, dtype=float)
 
-    def _process(
-        self, datum: np.array, error: Optional[np.array] = None
-    ) -> Tuple[np.array, np.array]:
+            if self._validate:
+                # shape is reduced because this is a single entry
+                if len(value_array.shape) <= self._axis - 1:
+                    raise DataProcessorError(
+                        f"Cannot average the {len(value_array.shape)} dimensional "
+                        f"array along axis {self._axis}."
+                    )
+
+            yield value_array, error_array
+
+    def _process(self, gen_datum: Iterator) -> Generator:
         """Average the data.
 
          Args:
-             datum: an array of data.
+             gen_datum: A pipeline.
 
-         Returns:
+        Yields:
              Two arrays with one less dimension than the given datum and error. The error
              is the standard error of the mean, i.e. the standard deviation of the datum
              divided by :math:`sqrt{N}` where :math:`N` is the number of data points.
-
-        Raises:
-            DataProcessorError: If the axis is not an int.
         """
-        standard_error = np.std(datum, axis=self._axis) / np.sqrt(datum.shape[self._axis])
+        if self._axis == 0:
+            # average over different circuits. execute pipeline.
+            full_val_arr, _ = execute_pipeline(gen_datum)
+            n_circs = full_val_arr.shape[0]
 
-        return np.average(datum, axis=self._axis), standard_error
+            # take average over full matrix
+            avg_mat = np.average(full_val_arr, axis=self._axis)
+            std_mat = np.std(full_val_arr, axis=self._axis) / np.sqrt(n_circs)
+
+            yield np.asarray(avg_mat, dtype=float), np.asarray(std_mat, dtype=float)
+        else:
+            # keep pipeline, e.g. averaging over shots of single circuit
+            for value_array, _ in gen_datum:
+                axis = self._axis - 1
+                n_elements = value_array.shape[axis]
+
+                avg_mat = np.average(value_array, axis=axis)
+                std_mat = np.std(value_array, axis=axis) / np.sqrt(n_elements)
+
+                yield avg_mat, std_mat
 
 
 class MinMaxNormalize(DataAction):
     """Normalizes the data."""
 
-    def _format_data(self, datum: Any, error: Optional[Any] = None):
-        """Format the data into numpy arrays."""
-        datum = np.asarray(datum, dtype=float)
+    def _format_data(self, gen_datum: Iterator) -> Tuple[np.ndarray, np.ndarray]:
+        """Format and validate.
 
-        if error is not None:
-            error = np.asarray(error, dtype=float)
+        Args:
+             gen_datum: A pipeline.
 
-        return datum, error
+        Returns:
+            A tuple of formatted values and error arrays.
+        """
+        full_val_arr, full_err_arr = execute_pipeline(gen_datum)
+        return np.asarray(full_val_arr, dtype=float), np.asarray(full_err_arr, dtype=float)
 
-    def _process(
-        self, datum: np.array, error: Optional[np.array] = None
-    ) -> Tuple[np.array, np.array]:
-        """Normalize the data to the interval [0, 1]."""
-        min_y, max_y = np.min(datum), np.max(datum)
+    def _process(self, full_arrays_tup: Tuple[np.ndarray, np.ndarray]) -> Generator:
+        """Normalzie data. This node execute pipeline and generate full data array.
 
-        if error is not None:
-            return (datum - min_y) / (max_y - min_y), error / (max_y - min_y)
-        else:
-            return (datum - min_y) / (max_y - min_y), None
+         Args:
+             full_arrays_tup: Values and errors from executed pipeline.
+
+        Yields:
+             Values normalized to the interval [0, 1].
+        """
+        full_val_arr, full_err_arr = full_arrays_tup
+
+        min_y, max_y = np.min(full_val_arr), np.max(full_val_arr)
+        scale = float(max_y) - float(min_y)
+
+        for out_value, out_error in zip(full_val_arr, full_err_arr):
+            yield (out_value - min_y) / scale, out_error / scale
 
 
 class SVD(TrainableDataAction):
     """Singular Value Decomposition of averaged IQ data."""
 
     def __init__(self, validate: bool = True):
-        """
+        """Create new action.
+
         Args:
             validate: If set to False the DataAction will not validate its input.
         """
@@ -107,38 +160,101 @@ class SVD(TrainableDataAction):
         self._main_axes = None
         self._means = None
         self._scales = None
+        self._n_shots = 0
+        self._n_slots = 0
+        self._n_iq = 0
 
-    def _format_data(self, datum: Any, error: Optional[Any] = None) -> Tuple[Any, Any]:
-        """Check that the IQ data is 2D and convert it to a numpy array.
+    def _format_data(self, gen_datum: Iterator) -> Generator:
+        """Format and validate.
 
         Args:
-            datum: A single item of data which corresponds to single-shot IQ data.
+             gen_datum: A pipeline.
 
-        Returns:
-            datum and any error estimate as a numpy array.
+        Yields:
+            A tuple of formatted data and error.
 
         Raises:
             DataProcessorError: If the datum does not have the correct format.
         """
-        datum = np.asarray(datum, dtype=float)
+        for value_array, error_array in gen_datum:
+            value_array = np.asarray(value_array, dtype=float)
+            error_array = np.asarray(error_array, dtype=float)
+            self._n_shots = 0
+            self._n_slots = 0
+            self._n_iq = 0
 
-        if error is not None:
-            error = np.asarray(error, dtype=float)
+            # identify shape
+            try:
+                # level1 single mode
+                self._n_shots, self._n_slots, self._n_iq = value_array.shape
+            except ValueError:
+                try:
+                    # level1 average mode
+                    self._n_slots, self._n_iq = value_array.shape
+                except ValueError as ex:
+                    raise DataProcessorError(
+                        f"Data given to {self.__class__.__name__} is not likely level1 data."
+                    ) from ex
 
-        if self._validate:
-            if len(datum.shape) not in {2, 3}:
-                raise DataProcessorError(
-                    f"IQ data given to {self.__class__.__name__} must be a 2D array. "
-                    f"Instead, a {len(datum.shape)}D array was given."
+            if self._validate:
+                if self._n_iq != 2:
+                    raise DataProcessorError(
+                        f"IQ data given to {self.__class__.__name__} must be a 2D array. "
+                        f"Instead, a {self._n_iq}D array was given."
+                    )
+                if value_array.shape != error_array.shape:
+                    raise DataProcessorError(
+                        f"IQ data error given to {self.__class__.__name__} is invalid data shape."
+                    )
+
+            yield value_array, error_array
+
+    def _process(self, gen_datum: Iterator) -> Generator:
+        """Compute singular values.
+
+        Args:
+            gen_datum: A generator of unprocessed data. Each entry is a tuple of data and error.
+
+        Yields:
+            A tuple of processed data and error.
+
+        Raises:
+            DataProcessorError: If the SVD has not been previously trained on data.
+        """
+        if not self.is_trained:
+            raise DataProcessorError("SVD must be trained on data before it can be used.")
+
+        for value_array, error_array in gen_datum:
+            if self._n_shots == 0:
+                # level1 single mode, IQ axis is projected
+                singular_vals = np.zeros(self._n_slots, dtype=float)
+                error_vals = np.zeros(self._n_slots, dtype=float)
+            else:
+                # level1 average mode, IQ axis is projected
+                singular_vals = np.zeros((self._n_shots, self._n_slots), dtype=float)
+                error_vals = np.zeros((self._n_shots, self._n_slots), dtype=float)
+
+            # process each averaged IQ point with its own axis.
+            for idx in range(self._n_slots):
+                scale = self.scales[idx]
+                centered = np.array(
+                    [
+                        value_array[..., idx, iq] - self.means(qubit=idx, iq_index=iq)
+                        for iq in [0, 1]
+                    ]
+                )
+                angle = np.arctan(self._main_axes[idx][1] / self._main_axes[idx][0])
+
+                singular_vals[..., idx] = (self._main_axes[idx] @ centered) / scale
+                error_vals[..., idx] = (
+                    np.sqrt(
+                        (error_array[..., idx, 0] * np.cos(angle)) ** 2
+                        + (error_array[..., idx, 1] * np.sin(angle)) ** 2
+                    )
+                    / scale
                 )
 
-            if error is not None and len(error.shape) not in {2, 3}:
-                raise DataProcessorError(
-                    f"IQ data error given to {self.__class__.__name__} must be a 2D array."
-                    f"Instead, a {len(error.shape)}D array was given."
-                )
-
-        return datum, error
+            yield singular_vals, error_vals
 
     @property
     def axis(self) -> List[np.array]:
@@ -175,64 +291,7 @@ class SVD(TrainableDataAction):
         """
         return self._main_axes is not None
 
-    def _process(
-        self, datum: np.array, error: Optional[np.array] = None
-    ) -> Tuple[np.array, np.array]:
-        """Project the IQ data onto the axis defined by an SVD and scale it.
-
-        Args:
-            datum: A 2D array of qubits, and an average complex IQ point as [real, imaginary].
-            error: An optional 2D array of qubits, and an error on an average complex IQ
-                point as [real, imaginary].
-
-        Returns:
-            A Tuple of 1D arrays of the result of the SVD and the associated error. Each entry
-            is the real part of the averaged IQ data of a qubit.
-
-        Raises:
-            DataProcessorError: If the SVD has not been previously trained on data.
-        """
-
-        if not self.is_trained:
-            raise DataProcessorError("SVD must be trained on data before it can be used.")
-
-        n_qubits = datum.shape[0] if len(datum.shape) == 2 else datum.shape[1]
-        processed_data = []
-
-        if error is not None:
-            processed_error = []
-        else:
-            processed_error = None
-
-        # process each averaged IQ point with its own axis.
-        for idx in range(n_qubits):
-
-            centered = np.array(
-                [datum[..., idx, iq] - self.means(qubit=idx, iq_index=iq) for iq in [0, 1]]
-            )
-
-            processed_data.append((self._main_axes[idx] @ centered) / self.scales[idx])
-
-            if error is not None:
-                angle = np.arctan(self._main_axes[idx][1] / self._main_axes[idx][0])
-                error_value = np.sqrt(
-                    (error[..., idx, 0] * np.cos(angle)) ** 2
-                    + (error[..., idx, 1] * np.sin(angle)) ** 2
-                )
-                processed_error.append(error_value / self.scales[idx])
-
-        if len(processed_data) == 1:
-            if error is None:
-                return processed_data[0], None
-            else:
-                return processed_data[0], processed_error[0]
-
-        if error is None:
-            return np.array(processed_data), None
-        else:
-            return np.array(processed_data), np.array(processed_error)
-
-    def train(self, data: List[Any]):
+    def train(self, full_val_arr: np.ndarray, full_err_arr: Optional[np.ndarray] = None):
         """Train the SVD on the given data.
 
         Each element of the given data will be converted to a 2D array of dimension
@@ -243,19 +302,27 @@ class SVD(TrainableDataAction):
         qubit so that future data points can be projected onto the axis.
 
         Args:
-            data: A list of datums. Each datum will be converted to a 2D array.
+            full_val_arr: A list of values. Each datum will be converted to a 2D array.
+            full_err_arr: A list of errors. Each datm will be converted to a 2D array.
         """
-        if data is None:
+        if full_val_arr is None:
             return
 
-        n_qubits = self._format_data(data[0])[0].shape[0]
+        # Format
+        full_val_arr = np.asarray(full_val_arr, dtype=float)
+
+        if full_err_arr is None:
+            full_err_arr = np.full_like(full_val_arr, np.nan, dtype=float)
+
+        # TODO should consider error
+        _ = np.asarray(full_err_arr, dtype=float)
 
         self._main_axes = []
         self._scales = []
         self._means = []
-
-        for qubit_idx in range(n_qubits):
-            datums = np.vstack([self._format_data(datum)[0][qubit_idx] for datum in data]).T
+        n_slots = full_val_arr.shape[1]
+        for slot_idx in range(n_slots):
+            datums = np.vstack([datum[slot_idx] for datum in full_val_arr]).T
 
             # Calculate the mean of the data to recenter it in the IQ plane.
             mean_i = np.average(datums[0, :])
@@ -276,7 +343,8 @@ class IQPart(DataAction):
     """Abstract class for IQ data post-processing."""
 
     def __init__(self, scale: float = 1.0, validate: bool = True):
-        """
+        """Create new action.
+
         Args:
             scale: Float with which to multiply the IQ data. Defaults to 1.0.
             validate: If set to False the DataAction will not validate its input.
@@ -284,8 +352,7 @@ class IQPart(DataAction):
         self.scale = scale
         super().__init__(validate)
 
-    @abstractmethod
-    def _process(self, datum: np.array, error: Optional[np.array] = None) -> np.array:
+    def _process(self, gen_datum: Iterator) -> Generator:
         """Defines how the IQ point is processed.
 
         The dimension of the input datum corresponds to different types of data:
@@ -294,52 +361,52 @@ class IQPart(DataAction):
         - 4D represents all data of single-shot data.
 
         Args:
-            datum: A N dimensional array of complex IQ points as [real, imaginary].
-            error: A N dimensional array of errors on complex IQ points as [real, imaginary].
+            gen_datum: A generator of unprocessed data. Each entry is a tuple of data and error.
 
-        Returns:
-            Processed IQ point and its associated error estimate.
+        Yields:
+            A tuple of processed data and error.
         """
+        raise NotImplementedError
 
-    def _format_data(self, datum: Any, error: Optional[Any] = None) -> Tuple[Any, Any]:
-        """Check that the IQ data has the correct format and convert to numpy array.
+    def _format_data(self, gen_datum: Iterator) -> Generator:
+        """Validate and format the input.
+
+        Check that the given data and error have the correct structure.
 
         Args:
-            datum: A single item of data which corresponds to single-shot IQ data. It's
-                dimension will depend on whether it is single-shot IQ data (three-dimensional)
-                or averaged IQ date (two-dimensional).
+            gen_datum: A generator of unformatted data. Each entry is a tuple of data and error.
 
-        Returns:
-            datum and any error estimate as a numpy array.
+        Yields:
+            A tuple of formatted data and error.
 
         Raises:
             DataProcessorError: If the datum does not have the correct format.
         """
-        datum = np.asarray(datum, dtype=float)
+        for value_array, error_array in gen_datum:
+            value_array = np.asarray(value_array, dtype=float)
+            error_array = np.asarray(error_array, dtype=float)
 
-        if error is not None:
-            error = np.asarray(error, dtype=float)
+            if self._validate:
+                if len(value_array.shape) not in {1, 2, 3}:
+                    raise DataProcessorError(
+                        f"IQ data given to {self.__class__.__name__} must be an N dimensional"
+                        "array with N in (1, 2, 3). "
+                        f"Instead, a {len(value_array.shape)}D array was given."
+                    )
 
-        if self._validate:
-            if len(datum.shape) not in {2, 3, 4}:
-                raise DataProcessorError(
-                    f"IQ data given to {self.__class__.__name__} must be an N dimensional"
-                    f"array with N in (2, 3, 4). Instead, a {len(datum.shape)}D array was given."
-                )
+                if len(error_array.shape) not in {1, 2, 3}:
+                    raise DataProcessorError(
+                        f"IQ data error given to {self.__class__.__name__} must be an N dimensional"
+                        "array with N in (1, 2, 3). "
+                        f"Instead, a {len(error_array.shape)}D array was given."
+                    )
 
-            if error is not None and len(error.shape) not in {2, 3, 4}:
-                raise DataProcessorError(
-                    f"IQ data error given to {self.__class__.__name__} must be an N dimensional"
-                    f"array with N in (2, 3, 4). Instead, a {len(error.shape)}D array was given."
-                )
-
-            if error is not None and len(error.shape) != len(datum.shape):
-                raise DataProcessorError(
-                    "Datum and error do not have the same shape: "
-                    f"{len(datum.shape)} != {len(error.shape)}."
-                )
-
-        return datum, error
+                if len(error_array.shape) != len(value_array.shape):
+                    raise DataProcessorError(
+                        "Datum and error do not have the same shape: "
+                        f"{len(value_array.shape)} != {len(error_array.shape)}."
+                    )
+            yield value_array, error_array
 
     def __repr__(self):
         """String representation of the node."""
@@ -349,46 +416,35 @@ class IQPart(DataAction):
 class ToReal(IQPart):
     """IQ data post-processing. Isolate the real part of single-shot IQ data."""
 
-    def _process(
-        self, datum: np.array, error: Optional[np.array] = None
-    ) -> Tuple[np.array, np.array]:
+    def _process(self, gen_datum: Iterator) -> Generator:
         """Take the real part of the IQ data.
 
         Args:
-            datum: An N dimensional array of shots, qubits, and a complex IQ point as
-                [real, imaginary].
-            error: An N dimensional optional array of shots, qubits, and an error on a
-                complex IQ point as [real, imaginary].
+            gen_datum: A generator of unprocessed data. Each entry is a tuple of data and error.
 
-        Returns:
-            A N-1 dimensional array, each entry is the real part of the given IQ data and error.
+        Yields:
+            A tuple of processed data and error. A N-1 dimensional array,
+            each entry is the real part of the given IQ data and error.
         """
-        if error is not None:
-            return datum[..., 0] * self.scale, error[..., 0] * self.scale
-        else:
-            return datum[..., 0] * self.scale, None
+        for value_array, error_array in gen_datum:
+            yield value_array[..., 0] * self.scale, error_array[..., 0] * self.scale
 
 
 class ToImag(IQPart):
     """IQ data post-processing. Isolate the imaginary part of single-shot IQ data."""
 
-    def _process(self, datum: np.array, error: Optional[np.array] = None) -> np.array:
+    def _process(self, gen_datum: Iterator) -> Generator:
         """Take the imaginary part of the IQ data.
 
         Args:
-            datum: An N dimensional array of shots, qubits, and a complex IQ point as
-                [real, imaginary].
-            error: An N dimensional optional array of shots, qubits, and an error on a
-                complex IQ point as [real, imaginary].
+            gen_datum: A generator of unprocessed data. Each entry is a tuple of data and error.
 
-        Returns:
-            A N-1 dimensional array, each entry is the imaginary part of the given IQ data
-            and error.
+        Yields:
+            A tuple of processed data and error. A N-1 dimensional array,
+            each entry is the imaginary part of the given IQ data and error.
         """
-        if error is not None:
-            return datum[..., 1] * self.scale, error[..., 1] * self.scale
-        else:
-            return datum[..., 1] * self.scale, None
+        for value_array, error_array in gen_datum:
+            yield value_array[..., 1] * self.scale, error_array[..., 1] * self.scale
 
 
 class Probability(DataAction):
@@ -461,83 +517,61 @@ class Probability(DataAction):
             self._alpha_prior = list(alpha_prior)
         super().__init__(validate)
 
-    def _format_data(self, datum: dict, error: Optional[Any] = None) -> Tuple[dict, Any]:
+    def _format_data(self, gen_datum: Iterator) -> Generator:
         """
         Checks that the given data has a counts format.
 
         Args:
-            datum: An instance of data the should be a dict with bit strings as keys
-                and counts as values.
+            gen_datum: A generator of unformatted data. Each entry is a tuple of data and error.
 
-        Returns:
-            The datum as given.
+        Yields:
+            The datum typecasted to dictionary.
 
         Raises:
             DataProcessorError: if the data is not a counts dict or a list of counts dicts.
         """
-        if self._validate:
+        for value_array, _ in gen_datum:
+            # Discard previous data. Probability is determined by sampling error.
+            # Any IQ distribution variance will be ignored at this stage.
+            count_dict = value_array[0]
 
-            if isinstance(datum, dict):
-                data = [datum]
-            elif isinstance(datum, list):
-                data = datum
-            else:
-                raise DataProcessorError(f"Datum must be dict or list, received {type(datum)}.")
-
-            for datum_ in data:
-                if not isinstance(datum_, dict):
+            if self._validate:
+                if not isinstance(count_dict, dict):
                     raise DataProcessorError(
-                        f"Given counts datum {datum_} to "
+                        f"Given counts datum {count_dict} to "
                         f"{self.__class__.__name__} is not a valid count format."
                     )
-
-                for bit_str, count in datum_.items():
+                for bit_str, count in count_dict.items():
                     if not isinstance(bit_str, str):
                         raise DataProcessorError(
-                            f"Key {bit_str} is not a valid count key in{self.__class__.__name__}."
+                            f"Key {bit_str} is not a valid count key in {self.__class__.__name__}."
                         )
-
                     if not isinstance(count, (int, float, np.integer)):
                         raise DataProcessorError(
                             f"Count {bit_str} is not a valid count value in {self.__class__.__name__}."
                         )
 
-        return datum, None
+            yield count_dict
 
-    def _process(
-        self,
-        datum: Union[Dict[str, Any], List[Dict[str, Any]]],
-        error: Optional[Union[Dict, List]] = None,
-    ) -> Union[Tuple[float, float], Tuple[np.array, np.array]]:
-        """
+    def _process(self, gen_datum: Iterator) -> Generator:
+        """Compute probability and sampling error.
+
         Args:
-            datum: The data dictionary,taking the data under counts and
-                adding the corresponding probabilities.
+            gen_datum: A generator of unprocessed data. Each entry is a count dictionary.
 
-        Returns:
-            processed data: A dict with the populations and standard deviation.
+        Yields:
+            A tuple of processed data and error.
         """
-        if isinstance(datum, dict):
-            return self._population_error(datum)
-        else:
-            populations, errors = [], []
+        for count_dict in gen_datum:
 
-            for datum_ in datum:
-                pop, error = self._population_error(datum_)
-                populations.append(pop)
-                errors.append(error)
+            shots = sum(count_dict.values())
+            freq = count_dict.get(self._outcome, 0)
+            alpha_posterior = [freq + self._alpha_prior[0], shots - freq + self._alpha_prior[1]]
+            alpha_sum = sum(alpha_posterior)
+            p_mean = alpha_posterior[0] / alpha_sum
+            p_var = p_mean * (1 - p_mean) / (alpha_sum + 1)
 
-            return np.array(populations), np.array(errors)
-
-    def _population_error(self, counts_dict: Dict[str, int]) -> Tuple[float, float]:
-        """Helper method"""
-        shots = sum(counts_dict.values())
-        freq = counts_dict.get(self._outcome, 0)
-        alpha_posterior = [freq + self._alpha_prior[0], shots - freq + self._alpha_prior[1]]
-        alpha_sum = sum(alpha_posterior)
-        p_mean = alpha_posterior[0] / alpha_sum
-        p_var = p_mean * (1 - p_mean) / (alpha_sum + 1)
-        return p_mean, np.sqrt(p_var)
+            yield np.asarray([p_mean], dtype=float), np.asarray([np.sqrt(p_var)], dtype=float)
 
 
 class BasisExpectationValue(DataAction):
@@ -547,40 +581,38 @@ class BasisExpectationValue(DataAction):
         The sign becomes P(0) -> 1, P(1) -> -1.
     """
 
-    def _format_data(
-        self, datum: np.ndarray, error: Optional[np.ndarray] = None
-    ) -> Tuple[Any, Any]:
-        """Check that the input data are probabilities.
+    def _format_data(self, gen_datum: Iterator) -> Generator:
+        """Validate and format the input.
+
+        Check if given value is likely probability.
 
         Args:
-            datum: An array representing probabilities.
-            error: An array representing error.
+            gen_datum: A generator of unformatted data. Each entry is a tuple of data and error.
 
-        Returns:
-            Arrays of probability and its error
+        Yields:
+            A tuple of formatted data and error.
 
         Raises:
             DataProcessorError: When input value is not in [0, 1]
         """
-        if not all(0.0 <= p <= 1.0 for p in datum):
-            raise DataProcessorError(
-                f"Input data for node {self.__class__.__name__} is not likely probability."
-            )
-        return datum, error
+        for value_array, error_array in gen_datum:
+            value = float(value_array)
+            error = float(error_array)
+            if self._validate:
+                if not 0 < value < 1:
+                    raise DataProcessorError(
+                        f"Input data for node {self.__class__.__name__} is not likely probability."
+                    )
+            yield value, error
 
-    def _process(
-        self, datum: np.array, error: Optional[np.array] = None
-    ) -> Tuple[np.array, np.array]:
+    def _process(self, gen_datum: Iterator) -> Generator:
         """Compute eigenvalue.
 
         Args:
-            datum: An array representing probabilities.
-            error: An array representing error.
+            gen_datum: A generator of unprocessed data. Each entry is a tuple of data and error.
 
-        Returns:
-            Arrays of eigenvalues and its error
+        Yields:
+            A tuple of processed data and error.
         """
-        if error is not None:
-            return 2 * (0.5 - datum), 2 * error
-        else:
-            return 2 * (0.5 - datum), None
+        for value, stdev in gen_datum:
+            yield np.asarray(2 * (0.5 - value), dtype=float), np.asarray(2 * stdev, dtype=float)

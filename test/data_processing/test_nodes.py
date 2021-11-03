@@ -28,22 +28,36 @@ from qiskit_experiments.data_processing.data_processor import DataProcessor
 from . import BaseDataProcessorTest
 
 
+def processor_wrapper(node, values, errors=None):
+    """A helper function to execute node."""
+    values = np.asarray(values, dtype=object)
+    if errors is None:
+        errors = np.full_like(values, np.nan, dtype=float)
+    errors = np.asarray(errors, dtype=float)
+
+    node_out = list(node(zip(values, errors)))
+    return list(zip(*node_out))
+
+
 class TestAveraging(BaseDataProcessorTest):
     """Test the averaging nodes."""
 
     def test_simple(self):
         """Simple test of averaging."""
-
-        datum = np.array([[1, 2], [3, 4], [5, 6]])
+        source = np.array([[1, 2], [3, 4], [5, 6]])
 
         node = AverageData(axis=1)
-        self.assertTrue(np.allclose(node(datum)[0], np.array([1.5, 3.5, 5.5])))
-        self.assertTrue(np.allclose(node(datum)[1], np.array([0.5, 0.5, 0.5]) / np.sqrt(2)))
+        node_out = processor_wrapper(node, source)
+
+        self.assertTrue(np.allclose(node_out[0], np.array([1.5, 3.5, 5.5])))
+        self.assertTrue(np.allclose(node_out[1], np.array([0.5, 0.5, 0.5]) / np.sqrt(2)))
 
         node = AverageData(axis=0)
-        self.assertTrue(np.allclose(node(datum)[0], np.array([3.0, 4.0])))
+        node_out = processor_wrapper(node, source)
+
+        self.assertTrue(np.allclose(node_out[0], np.array([3.0, 4.0])))
         std = np.std([1, 3, 5])
-        self.assertTrue(np.allclose(node(datum)[1], np.array([std, std]) / np.sqrt(3)))
+        self.assertTrue(np.allclose(node_out[1], np.array([std, std]) / np.sqrt(3)))
 
     def test_iq_averaging(self):
         """Test averaging of IQ-data."""
@@ -64,11 +78,9 @@ class TestAveraging(BaseDataProcessorTest):
         self.create_experiment(iq_data, single_shot=True)
 
         avg_iq = AverageData(axis=0)
-
-        avg_datum, error = avg_iq(self.iq_experiment.data(0)["memory"])
+        avg_datum, error = processor_wrapper(avg_iq, self.iq_experiment.data(0)["memory"])
 
         expected_avg = np.array([[8.82943876e13, -1.27850527e15], [1.43410186e14, -3.89952402e15]])
-
         expected_std = np.array(
             [[5.07650185e14, 4.44664719e13], [1.40522641e15, 1.22326831e14]]
         ) / np.sqrt(10)
@@ -91,9 +103,14 @@ class TestNormalize(QiskitTestCase):
 
         node = MinMaxNormalize()
 
-        self.assertTrue(np.allclose(node(data)[0], expected_data))
-        self.assertTrue(np.allclose(node(data, error)[0], expected_data))
-        self.assertTrue(np.allclose(node(data, error)[1], expected_error))
+        # error free data
+        node_out = processor_wrapper(node, data)
+        self.assertTrue(np.allclose(node_out[0], expected_data))
+
+        # error data
+        node_out = processor_wrapper(node, data, error)
+        self.assertTrue(np.allclose(node_out[0], expected_data))
+        self.assertTrue(np.allclose(node_out[1], expected_error))
 
 
 class TestSVD(BaseDataProcessorTest):
@@ -118,15 +135,15 @@ class TestSVD(BaseDataProcessorTest):
         # qubit 1 IQ data is oriented along (1, -1)
         self.assertTrue(np.allclose(iq_svd._main_axes[1], np.array([-1, 1]) / np.sqrt(2)))
 
-        processed, _ = iq_svd(np.array([[1, 1], [1, -1]]))
+        processed, _ = processor_wrapper(iq_svd, [[[1, 1], [1, -1]]])
         expected = np.array([-1, -1]) / np.sqrt(2)
         self.assertTrue(np.allclose(processed, expected))
 
-        processed, _ = iq_svd(np.array([[2, 2], [2, -2]]))
+        processed, _ = processor_wrapper(iq_svd, [[[2, 2], [2, -2]]])
         self.assertTrue(np.allclose(processed, expected * 2))
 
         # Check that orthogonal data gives 0.
-        processed, _ = iq_svd(np.array([[1, -1], [1, 1]]))
+        processed, _ = processor_wrapper(iq_svd, [[[1, -1], [1, 1]]])
         expected = np.array([0, 0])
         self.assertTrue(np.allclose(processed, expected))
 
@@ -166,18 +183,19 @@ class TestSVD(BaseDataProcessorTest):
         iq_svd._means = [[0.0, 0.0]]
 
         # Since the axis is along the real part the imaginary error is irrelevant.
-        processed, error = iq_svd([[1.0, 0.2]], [[0.2, 0.1]])
+        processed, error = processor_wrapper(iq_svd, [[[1.0, 0.2]]], [[[0.2, 0.1]]])
         self.assertEqual(processed, np.array([1.0]))
         self.assertEqual(error, np.array([0.2]))
 
         # Since the axis is along the real part the imaginary error is irrelevant.
-        processed, error = iq_svd([[1.0, 0.2]], [[0.2, 0.3]])
+        processed, error = processor_wrapper(iq_svd, [[[1.0, 0.2]]], [[[0.2, 0.3]]])
         self.assertEqual(processed, np.array([1.0]))
         self.assertEqual(error, np.array([0.2]))
 
         # Tilt the axis to an angle of 36.9... degrees
         iq_svd._main_axes = np.array([[0.8, 0.6]])
-        processed, error = iq_svd([[1.0, 0.0]], [[0.2, 0.3]])
+        processed, error = processor_wrapper(iq_svd, [[[1.0, 0.0]]], [[[0.2, 0.3]]])
+
         cos_ = np.cos(np.arctan(0.6 / 0.8))
         sin_ = np.sin(np.arctan(0.6 / 0.8))
         self.assertEqual(processed, np.array([cos_]))
@@ -215,14 +233,14 @@ class TestProbability(QiskitTestCase):
         node = Probability(outcome="1")
 
         data = {"1": 1024, "0": 0}
-        mode, stderr = node(data)
-        self.assertGreater(stderr, 0.0)
-        self.assertLessEqual(mode, 1.0)
+        mean, stderr = processor_wrapper(node, [[data]])
+        self.assertGreater(float(stderr[0]), 0.0)
+        self.assertLessEqual(float(mean[0]), 1.0)
 
         data = {"1": 0, "0": 1024}
-        mode, stderr = node(data)
-        self.assertGreater(stderr, 0.0)
-        self.assertGreaterEqual(mode, 0.0)
+        mean, stderr = processor_wrapper(node, [[data]])
+        self.assertGreater(float(stderr[0]), 0.0)
+        self.assertGreaterEqual(float(mean[0]), 0.0)
 
     def test_probability_balanced(self):
         """Test if p=0.5 is returned when counts are balanced and prior is flat."""
@@ -230,5 +248,5 @@ class TestProbability(QiskitTestCase):
 
         # balanced counts with a flat prior will yield p = 0.5
         data = {"1": 512, "0": 512}
-        mode, _ = node(data)
-        self.assertAlmostEqual(mode, 0.5)
+        mean, _ = processor_wrapper(node, [[data]])
+        self.assertAlmostEqual(float(mean[0]), 0.5)
