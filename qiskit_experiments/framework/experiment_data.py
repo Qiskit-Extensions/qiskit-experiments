@@ -14,14 +14,17 @@ Experiment Data class
 """
 from __future__ import annotations
 import logging
-from typing import Dict, Optional, List, Union, TYPE_CHECKING
+from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
 from datetime import datetime
 import warnings
+import numpy as np
 from qiskit.exceptions import QiskitError
 from qiskit.providers.backend import Backend
+from qiskit.qobj.utils import MeasLevel, MeasReturnType
 from qiskit_experiments.database_service import DbExperimentDataV1 as DbExperimentData
 from qiskit_experiments.database_service.database_service import (
     DatabaseServiceV1 as DatabaseService,
+    DeviceComponent,
 )
 from qiskit_experiments.database_service.utils import ThreadSafeOrderedDict
 
@@ -139,6 +142,33 @@ class ExperimentData(DbExperimentData):
             DeprecationWarning,
         )
         return self.child_data(index)
+
+    def data(
+        self,
+        index: Optional[Union[int, slice, str]] = None,
+    ) -> List[CircuitData]:
+        """Return the experiment data at the specified index.
+
+        Args:
+            index: Index of the data to be returned.
+                Several types are accepted for convenience:
+
+                    * None: Return all experiment data.
+                    * int: Specific index of the data.
+                    * slice: A list slice of data indexes.
+                    * str: ID of the job that produced the data.
+
+        Returns:
+            Experiment data.
+
+        Raises:
+            TypeError: If the input `index` has an invalid type.
+        """
+        raw_data = super().data(index=index)
+
+        if isinstance(raw_data, dict):
+            raw_data = [raw_data]
+        return [CircuitData.from_dict(raw_datum) for raw_datum in raw_data]
 
     def save(self) -> None:
         super().save()
@@ -274,3 +304,200 @@ class ExperimentData(DbExperimentData):
         ret += f"\nAnalysis Results: {n_res}"
         ret += f"\nFigures: {len(self._figures)}"
         return ret
+
+
+class CircuitData:
+    """Outcome with metadata from the single quantum circuit execution."""
+
+    __slots__ = (
+        "_counts",
+        "_memory",
+        "_job_id",
+        "_metadata",
+        "_shots",
+        "_meas_level",
+        "_meas_return",
+    )
+
+    def __init__(
+        self,
+        job_id,
+        metadata: Dict[str, Any],
+        counts: Optional[Dict[str, Union[int, float]]] = None,
+        memory: Optional[np.ndarray] = None,
+        shots: Optional[int] = None,
+        meas_level: Optional[int] = None,
+        meas_return: Optional[str] = None,
+    ):
+        """Create new data object.
+
+        Args:
+            job_id: ID of Qiskit job generating this data.
+            metadata: Metadata associated with this circuit.
+            counts: Optional, counts data dictionary.
+            memory: Optional, memory data array-like.
+            shots: Optional, number of repeated measurement.
+            meas_level: Optional, measurement level.
+            meas_return: Optional, data format of returned data, averaged or not.
+        """
+        self._job_id = job_id
+        self._metadata = metadata
+        self._counts = counts
+        self._memory = np.asarray(memory)
+        self._shots = shots
+        self._meas_level = meas_level
+        self._meas_return = meas_return
+
+    @property
+    def job_id(self):
+        """Return job id. Read-only."""
+        return self._job_id
+
+    @property
+    def metadata(self):
+        """Return memory data. Read-only."""
+        return self._metadata
+
+    @property
+    def shots(self):
+        """Return shot number. Read-only.
+
+        Raises:
+            ValueError: When value is not set.
+        """
+        if self._shots is None:
+            raise ValueError("Shot information is not available.")
+        return self._shots
+
+    @property
+    def meas_level(self) -> MeasLevel:
+        """Return measurement level.
+
+        Raises:
+            ValueError: When value is not set.
+        """
+        if self._meas_level is None:
+            raise ValueError("Measurement level is not available.")
+        return MeasLevel(self._meas_level)
+
+    @meas_level.setter
+    def meas_level(self, meas_level: MeasLevel):
+        """Set new measurement level after data processing.
+
+        Args:
+            meas_level: New measurement level.
+        """
+        self.meas_level = meas_level.value
+
+    @property
+    def meas_return(self) -> MeasReturnType:
+        """Return measurement data format.
+
+        Raises:
+            ValueError: When value is not set.
+        """
+        if self._meas_return is None:
+            raise ValueError("Meas return type is not available.")
+        return MeasReturnType(self._meas_return)
+
+    @meas_return.setter
+    def meas_return(self, meas_return: MeasReturnType):
+        """Set new measurement data format after data processing.
+
+        Args:
+            meas_return: New measurement data format.
+        """
+        self._meas_return = meas_return.value
+
+    @property
+    def counts(self):
+        """Return count data.
+
+        Raises:
+            ValueError: When value is not set.
+        """
+        if self._counts is None:
+            raise ValueError("Count data is not available.")
+        return self._counts
+
+    @counts.setter
+    def counts(self, counts: Dict[str, Union[int, float]]):
+        """Set count data after data processing.
+
+        Args:
+            counts: Count value to set.
+        """
+        self._counts = counts
+
+    @property
+    def memory(self) -> np.ndarray:
+        """Return memory data.
+
+        Raises:
+            ValueError: When value is not set.
+        """
+        if self._memory is None:
+            raise ValueError("Memory data is not available.")
+        return self._memory
+
+    @memory.setter
+    def memory(self, memory: np.ndarray):
+        """Set memory data array after data processing.
+
+        Args:
+            memory: Memory data array to set.
+        """
+        self._memory = np.asarray(memory)
+
+    def filter(self, **kwargs) -> bool:
+        """Check if this is target circuit outcome.
+
+        Returns:
+            Return ``True`` when all input key-value pair matches with this metadata.
+        """
+        return all(self._metadata.get(k, None) == v for k, v in kwargs.items())
+
+    def get(self, key: str, default_value=None) -> Any:
+        """Return specific attribute. Backward compatibility.
+
+        Args:
+            key: Name of attribute to return.
+            default_value: Value returned when the entry doesn't exist.
+
+        Returns:
+            Value of the attribute.
+        """
+        try:
+            return getattr(self, key)
+        except (ValueError, AttributeError):
+            return default_value
+
+    @classmethod
+    def from_dict(cls, data_dict: Dict[str, Any]) -> "CircuitData":
+        """Initialize instance from dictionary that database service generates.
+
+        Args:
+            data_dict: Free form dictionary of circuit result.
+
+        Returns:
+            CircuitData instance.
+        """
+        return cls(
+            job_id=data_dict["job_id"],
+            metadata=data_dict["metadata"],
+            counts=data_dict.get("counts", None),
+            memory=data_dict.get("memory", None),
+            shots=data_dict.get("shots", None),
+            meas_level=data_dict.get("meas_level", None),
+            meas_return=data_dict.get("meas_return", None),
+        )
+
+    def __getitem__(self, item):
+        # for backward compatibility
+        return getattr(self, item)
+
+    def __repr__(self):
+        # this returns only metadata, which is the most important
+        # identifier of data entry in Qiskit Experiments
+        configs = ", ".join(f"{k}={v}" for k, v in self.metadata.items())
+        return f"{self.__class__.__name__}({configs})"

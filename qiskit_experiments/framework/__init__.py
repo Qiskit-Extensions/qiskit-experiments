@@ -203,6 +203,7 @@ Experiment Data Classes
     :toctree: ../stubs/
 
     ExperimentData
+    CircuitData
     ExperimentStatus
     JobStatus
     AnalysisStatus
@@ -245,7 +246,7 @@ from .base_analysis import BaseAnalysis
 from .base_experiment import BaseExperiment
 from .configs import ExperimentConfig, AnalysisConfig
 from .analysis_result_data import AnalysisResultData
-from .experiment_data import ExperimentData
+from .experiment_data import ExperimentData, CircuitData
 from .composite import (
     ParallelExperiment,
     BatchExperiment,
