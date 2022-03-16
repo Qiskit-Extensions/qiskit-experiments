@@ -21,7 +21,7 @@ import warnings
 
 from qiskit import transpile, assemble, QuantumCircuit
 from qiskit.providers import BaseJob
-from qiskit.providers import Backend, BaseBackend
+from qiskit.providers import Backend, BaseBackend, BackendV2
 from qiskit.providers.basebackend import BaseBackend as LegacyBackend
 from qiskit.exceptions import QiskitError
 from qiskit.qobj.utils import MeasLevel
@@ -142,6 +142,16 @@ class BaseExperiment(ABC, StoreInitArgs):
         properties from the supplied backend if required.
         """
         self._backend = backend
+
+        # V2 backend object will provide a set of dynamic parameters with default values.
+        # These options are copied to the experiment instance so that we can
+        # reproduce the experiment afterward, and user can know a set of available options.
+        if isinstance(backend, BackendV2):
+            self.set_run_options(**backend.options.__dict__)
+        else:
+            # This is just assumption that backend has this option.
+            # This is necessary for now because DataProcessor is initialized on the fly with this info.
+            self.set_run_options(meas_level=MeasLevel.CLASSIFIED)
 
     def copy(self) -> "BaseExperiment":
         """Return a copy of the experiment"""
@@ -457,7 +467,7 @@ class BaseExperiment(ABC, StoreInitArgs):
     @classmethod
     def _default_run_options(cls) -> Options:
         """Default options values for the experiment :meth:`run` method."""
-        return Options(meas_level=MeasLevel.CLASSIFIED)
+        return Options()
 
     @property
     def run_options(self) -> Options:
