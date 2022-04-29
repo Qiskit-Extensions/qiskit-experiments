@@ -96,10 +96,9 @@ from .ef_spectroscopy import EFSpectroscopy
 from .t2ramsey import T2Ramsey
 from .t2hahn import T2Hahn
 from .tphi import Tphi
-from .cr_hamiltonian import CrossResonanceHamiltonian, EchoedCrossResonanceHamiltonian
 from .rabi import Rabi, EFRabi
 from .half_angle import HalfAngle
-from .fine_amplitude import FineAmplitude, FineXAmplitude, FineSXAmplitude, FineZXAmplitude
+from .fine_amplitude import FineAmplitude, FineXAmplitude, FineSXAmplitude
 from .ramsey_xy import RamseyXY
 from .fine_frequency import FineFrequency
 from .drag import RoughDrag
@@ -108,3 +107,6 @@ from .fine_drag import FineDrag, FineXDrag, FineSXDrag
 from .local_readout_error import LocalReadoutError
 from .correlated_readout_error import CorrelatedReadoutError
 from .resonator_spectroscopy import ResonatorSpectroscopy
+
+from .two_qubit import CrossResonanceHamiltonian, EchoedCrossResonanceHamiltonian
+from .two_qubit import FineZXAmplitude

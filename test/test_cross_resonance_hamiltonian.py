@@ -22,7 +22,7 @@ from qiskit import QuantumCircuit, pulse, quantum_info as qi
 from qiskit.test.mock import FakeBogota
 from qiskit.extensions.hamiltonian_gate import HamiltonianGate
 from qiskit.providers.aer import AerSimulator
-from qiskit_experiments.library.characterization import cr_hamiltonian
+from qiskit_experiments.library.characterization.two_qubit import cr_hamiltonian
 
 
 class SimulatableCRGate(HamiltonianGate):
