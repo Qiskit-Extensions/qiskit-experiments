@@ -14,7 +14,13 @@
 
 from test.base import QiskitExperimentsTestCase
 import qiskit.pulse as pulse
-from qiskit_experiments.calibration_management.calibration_utils import used_in_calls
+from qiskit_experiments.calibration_management.calibration_utils import (
+    used_in_calls,
+    has_calls,
+    get_names_called_by_name,
+)
+from qiskit_experiments.calibration_management.called_schedule_by_name import CalledScheduleByName
+from qiskit_experiments.calibration_management.basis_gate_library import EchoedCrossResonance
 
 
 class TestCalibrationUtils(QiskitExperimentsTestCase):
@@ -23,43 +29,43 @@ class TestCalibrationUtils(QiskitExperimentsTestCase):
     def test_used_in_calls(self):
         """Test that we can identify schedules by name when calls are present."""
 
-        with pulse.build(name="xp") as xp:
-            pulse.play(pulse.Gaussian(160, 0.5, 40), pulse.DriveChannel(1))
-
         with pulse.build(name="xp2") as xp2:
             pulse.play(pulse.Gaussian(160, 0.5, 40), pulse.DriveChannel(1))
 
-        with pulse.build(name="call_xp") as xp_call:
-            pulse.call(xp)
-
-        with pulse.build(name="call_call_xp") as xp_call_call:
-            pulse.play(pulse.Drag(160, 0.5, 40, 0.2), pulse.DriveChannel(1))
-            pulse.call(xp_call)
+        xp_call = pulse.ScheduleBlock(name="call_xp")
+        xp_call.append(CalledScheduleByName("xp", pulse.DriveChannel(1)))
 
         self.assertSetEqual(used_in_calls("xp", [xp_call]), {"call_xp"})
         self.assertSetEqual(used_in_calls("xp", [xp2]), set())
-        self.assertSetEqual(
-            used_in_calls("xp", [xp_call, xp_call_call]), {"call_xp", "call_call_xp"}
-        )
+
+        # Check that the x gate is called by the ecr gate.
+        ecr_lib = EchoedCrossResonance()
+
+        self.assertSetEqual(used_in_calls("x", [ecr_lib["ecr"]]), {"ecr"})
+
+    def test_has_calls(self):
+        """Method to test if a schedule has calls."""
 
         with pulse.build(name="xp") as xp:
-            pulse.play(pulse.Gaussian(160, 0.5, 40), pulse.DriveChannel(2))
+            pulse.play(pulse.Gaussian(160, 0.5, 40), pulse.DriveChannel(1))
 
-        cr_tone_p = pulse.GaussianSquare(640, 0.2, 64, 500)
-        rotary_p = pulse.GaussianSquare(640, 0.1, 64, 500)
+        with pulse.build(name="call_xp") as call_xp:
+            pulse.call(xp)
 
-        cr_tone_m = pulse.GaussianSquare(640, -0.2, 64, 500)
-        rotary_m = pulse.GaussianSquare(640, -0.1, 64, 500)
-
-        with pulse.build(name="cr") as cr:
+        with pulse.build(name="call_xp2") as call_xp2:
             with pulse.align_sequential():
-                with pulse.align_left():
-                    pulse.play(rotary_p, pulse.DriveChannel(3))  # Rotary tone
-                    pulse.play(cr_tone_p, pulse.ControlChannel(2))  # CR tone.
-                pulse.call(xp)
-                with pulse.align_left():
-                    pulse.play(rotary_m, pulse.DriveChannel(3))
-                    pulse.play(cr_tone_m, pulse.ControlChannel(2))
+                pulse.play(pulse.Gaussian(160, 0.5, 40), pulse.DriveChannel(1))
                 pulse.call(xp)
 
-        self.assertSetEqual(used_in_calls("xp", [cr]), {"cr"})
+        self.assertFalse(has_calls(xp))
+        self.assertTrue(has_calls(call_xp))
+        self.assertTrue(has_calls(call_xp2))
+        self.assertFalse(has_calls(EchoedCrossResonance()["ecr"]))
+
+    def test_get_names_called_by_name(self):
+        """Test the get names called by name method."""
+
+        ecr = EchoedCrossResonance()
+
+        self.assertSetEqual(get_names_called_by_name(ecr["ecr"]), {"x"})
+        self.assertSetEqual(get_names_called_by_name(ecr["cr45p"]), set())

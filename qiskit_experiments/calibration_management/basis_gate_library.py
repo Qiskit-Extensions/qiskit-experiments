@@ -24,8 +24,10 @@ from warnings import warn
 from qiskit.circuit import Parameter
 import qiskit.pulse as pulse
 from qiskit.pulse import ScheduleBlock
+from qiskit.pulse.transforms import AlignSequential
 
 from qiskit_experiments.calibration_management.calibration_key_types import DefaultCalValue
+from qiskit_experiments.calibration_management.called_schedule_by_name import CalledScheduleByName
 from qiskit_experiments.exceptions import CalibrationError
 
 
@@ -115,7 +117,6 @@ class BasisGateLibrary(ABC, Mapping):
         """Return the basis gates supported by the library."""
         return list(self._schedules)
 
-    @abstractmethod
     def default_values(self) -> List[DefaultCalValue]:
         """Return the default values for the parameters.
 
@@ -123,6 +124,15 @@ class BasisGateLibrary(ABC, Mapping):
             A list of tuples is returned. These tuples are structured so that instances of
             :class:`Calibrations` can call :meth:`add_parameter_value` on the tuples.
         """
+        defaults = []
+        for name, schedule in self.items():
+            for param in schedule.parameters:
+                if "ch" not in param.name:
+                    value = self._default_values.get(param.name, None)
+                    if value is not None:
+                        defaults.append(DefaultCalValue(value, param.name, tuple(), name))
+
+        return defaults
 
     @abstractmethod
     def _build_schedules(self, basis_gates: Set[str]) -> Dict[str, ScheduleBlock]:
@@ -264,6 +274,9 @@ class FixedFrequencyTransmon(BasisGateLibrary):
     def default_values(self) -> List[DefaultCalValue]:
         """Return the default values for the parameters.
 
+        This overrides the method of the base class to account for parameter linkages and
+        standard sigma to duration relations.
+
         Returns
             A list of tuples is returned. These tuples are structured so that instances of
             :class:`Calibrations` can call :meth:`add_parameter_value` on the tuples.
@@ -289,3 +302,86 @@ class FixedFrequencyTransmon(BasisGateLibrary):
                     defaults.append(DefaultCalValue(value, param.name, tuple(), name))
 
         return defaults
+
+
+class EchoedCrossResonance(BasisGateLibrary):
+    """A gate library to define the echoed cross-resonance gate."""
+
+    __default_values__ = {
+        "duration": 640,
+        "width": 384,
+        "σ": 64,
+        "amp": 0.5,
+        "amp_trg": 0.0,
+    }
+
+    def __init__(
+        self,
+        pulse_on_target: bool = True,
+        basis_gates: Optional[List[str]] = None,
+        default_values: Optional[Dict] = None,
+    ):
+        """Setup the schedules.
+
+        Args:
+            pulse_on_target: A boolean to indicate if rotary/cancellation tones are
+                used in the CR gate. If this value is set to False then no pulse is played
+                on the target qubit during the cross-resonance pulse.
+            basis_gates: The basis gates to generate.
+            default_values: Default values for the parameters. This dictionary can contain
+                the following keys: "duration", "amp", "amp_trg", "width", and "σ".
+        """
+        self._pulse_on_target = pulse_on_target
+        super().__init__(basis_gates, default_values)
+
+    @property
+    def __supported_gates__(self) -> Dict[str, int]:
+        """The gates that this library supports and the number of qubits they apply to."""
+        return {"ecr": 2, "cr45p": 2, "cr45m": 2}
+
+    def _build_schedules(self, basis_gates: Set[str]) -> Dict[str, ScheduleBlock]:
+        """Build the schedules of the library."""
+
+        control = pulse.DriveChannel(Parameter("ch0"))
+        target = pulse.DriveChannel(Parameter("ch1"))
+        cr_chan = pulse.ControlChannel(Parameter("ch0.1"))
+
+        cr_amp = Parameter("amp")
+        trg_amp = Parameter("amp_trg")
+        cr_sigma = Parameter("σ")
+        cr_duration = Parameter("duration")
+        cr_width = Parameter("width")
+
+        cr45p = pulse.GaussianSquare(
+            duration=cr_duration, amp=cr_amp, sigma=cr_sigma, width=cr_width, name="cr45p"
+        )
+
+        cr45m = pulse.GaussianSquare(
+            duration=cr_duration, amp=-cr_amp, sigma=cr_sigma, width=cr_width, name="cr45m"
+        )
+
+        cr45p_target = pulse.GaussianSquare(
+            duration=cr_duration, amp=trg_amp, sigma=cr_sigma, width=cr_width, name="cr45p_target"
+        )
+
+        cr45m_target = pulse.GaussianSquare(
+            duration=cr_duration, amp=-trg_amp, sigma=cr_sigma, width=cr_width, name="cr45m_target"
+        )
+
+        with pulse.build(name="cr45p") as cr45p_sched:
+            pulse.play(cr45p, cr_chan)
+            if self._pulse_on_target:
+                pulse.play(cr45p_target, target)
+
+        with pulse.build(name="cr45m") as cr45m_sched:
+            pulse.play(cr45m, cr_chan)
+            if self._pulse_on_target:
+                pulse.play(cr45m_target, target)
+
+        ecr_sched = pulse.ScheduleBlock(name="ecr", alignment_context=AlignSequential())
+        ecr_sched.append(cr45p_sched)
+        ecr_sched.append(CalledScheduleByName("x", control))
+        ecr_sched.append(cr45m_sched)
+        ecr_sched.append(CalledScheduleByName("x", control))
+
+        return {"ecr": ecr_sched, "cr45m": cr45m_sched, "cr45p": cr45p_sched}
