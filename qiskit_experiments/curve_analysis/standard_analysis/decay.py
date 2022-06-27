@@ -11,12 +11,16 @@
 # that they have been altered from the originals.
 """Decay analysis class."""
 
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import lmfit
 import numpy as np
 
 import qiskit_experiments.curve_analysis as curve
+from qiskit_experiments.framework import ExperimentData, AnalysisResultData, Options, FitVal
+from qiskit_experiments.data_processing import DataProcessor
+from qiskit_experiments.data_processing.exceptions import DataProcessorError
+from qiskit_experiments.data_processing.processor_library import get_processor
 
 
 class DecayAnalysis(curve.CurveAnalysis):
@@ -57,6 +61,19 @@ class DecayAnalysis(curve.CurveAnalysis):
                 )
             ]
         )
+
+    def _default_options(cls) -> Options:
+        """Return default analysis options.
+
+        Analysis Options:
+            raw_data_mode (bool): If the option is set to ``True`` the curve fitting is skipped and
+                returns raw data point at each scan point. This option is sometime useful for experiments
+                that aims at measuring fast dynamics or scan decay values with various configurations.
+        """
+        options = super()._default_options()
+        options.raw_data_mode = False
+
+        return options
 
     def _generate_fit_guesses(
         self,
@@ -108,3 +125,66 @@ class DecayAnalysis(curve.CurveAnalysis):
             return "good"
 
         return "bad"
+
+    def _run_analysis(
+        self, experiment_data: ExperimentData, **options
+    ) -> Tuple[List[AnalysisResultData], List["pyplot.Figure"]]:
+        """Run analysis on circuit data.
+
+        Args:
+            experiment_data: the experiment data to analyze.
+            options: kwarg options for analysis function.
+
+        Returns:
+            tuple: A pair ``(analysis_results, figures)`` where ``analysis_results``
+                   is a list of :class:`AnalysisResultData` objects, and ``figures``
+                   is a list of any figures for the experiment.
+        """
+        # TODO this will be cleaned up with analysis configuration refactoring
+        analysis_options = self._default_options().__dict__
+        analysis_options.update(options)
+
+        if analysis_options["raw_data_mode"]:
+            # TODO we need separation of data processing. Below is boilerplate code just copied from base class.
+            self._arg_parse(**analysis_options)
+
+            data_processor = self._get_option("data_processor")
+
+            if not data_processor:
+                run_options = self._run_options() or dict()
+
+                try:
+                    meas_level = run_options["meas_level"]
+                except KeyError as ex:
+                    raise DataProcessorError(
+                        f"Cannot process data without knowing the measurement level: {str(ex)}."
+                    ) from ex
+
+                meas_return = run_options.get("meas_return", None)
+                normalization = self._get_option("normalization")
+
+                data_processor = get_processor(meas_level, meas_return, normalization)
+
+            if isinstance(data_processor, DataProcessor) and not data_processor.is_trained:
+                # Qiskit DataProcessor instance. May need calibration.
+                data_processor.train(data=experiment_data.data())
+
+            self._extract_curves(experiment_data=experiment_data, data_processor=data_processor)
+
+            raw_data = self._data()
+
+            analysis_results = []
+            for xval, yval, yerr in zip(raw_data.x, raw_data.y, raw_data.y_err):
+                analysis_results.append(
+                    AnalysisResultData(
+                        name=f"{self.__class__.__name__}_single_point",
+                        value=FitVal(yval, yerr),
+                        extra={
+                            "xval": xval,
+                        },
+                    )
+                )
+
+            return analysis_results, []
+        else:
+            return super()._run_analysis(experiment_data, **analysis_options)
