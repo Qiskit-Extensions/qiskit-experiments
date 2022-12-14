@@ -198,10 +198,12 @@ class BackendData:
         """Returns the backend's provider"""
         try:
             if self._v1:
+                print("getting v1 provider")
                 return self._backend.provider()
             elif self._v2:
                 return self._backend.provider
         except AttributeError:
+            print("Failed to get provider")
             return None
         return None
 

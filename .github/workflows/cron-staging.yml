@@ -2,6 +2,8 @@ name: Cron-staging
 on:
   schedule:
     - cron: "0 4 * * *"
+    pull_request:
+      branches: [ main, 'stable/*' ]
 jobs:
   experiment-integration:
     name: experiment-integration
