@@ -29,6 +29,7 @@ Experiments
     Tphi
     QubitSpectroscopy
     CrossResonanceHamiltonian
+    CrossResonancePhase
     EchoedCrossResonanceHamiltonian
     Rabi
     EFRabi
@@ -101,6 +102,7 @@ from .t2ramsey import T2Ramsey
 from .t2hahn import T2Hahn
 from .tphi import Tphi
 from .cr_hamiltonian import CrossResonanceHamiltonian, EchoedCrossResonanceHamiltonian
+from .cr_phase import CrossResonancePhase
 from .rabi import Rabi, EFRabi
 from .half_angle import HalfAngle
 from .fine_amplitude import FineAmplitude, FineXAmplitude, FineSXAmplitude, FineZXAmplitude

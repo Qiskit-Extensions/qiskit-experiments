@@ -59,6 +59,7 @@ Some experiments may be also used for gate calibration.
     ~characterization.QubitSpectroscopy
     ~characterization.EFSpectroscopy
     ~characterization.CrossResonanceHamiltonian
+    ~characterization.CrossResonancePhase
     ~characterization.EchoedCrossResonanceHamiltonian
     ~characterization.RoughDrag
     ~characterization.FineDrag
@@ -134,6 +135,7 @@ from .characterization import (
     QubitSpectroscopy,
     EFSpectroscopy,
     CrossResonanceHamiltonian,
+    CrossResonancePhase,
     EchoedCrossResonanceHamiltonian,
     RoughDrag,
     FineDrag,
