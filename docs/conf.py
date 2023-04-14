@@ -10,6 +10,8 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
+# pylint: disable=invalid-name, wrong-import-position, unused-argument
+
 """
 Sphinx documentation builder.
 """
@@ -185,23 +187,23 @@ if os.getenv("EXPERIMENTS_DEV_DOCS", None):
 def _get_versions(app, config):
     context = config.html_context
     start_version = (0, 5, 0)
-    proc = subprocess.run(["git", "describe", "--abbrev=0"], capture_output=True)
+    proc = subprocess.run(["git", "describe", "--abbrev=0"], capture_output=True, check=False)
     proc.check_returncode()
     current_version = proc.stdout.decode("utf8")
     current_version_info = current_version.split(".")
     if current_version_info[0] == "0":
-        version_list = [
-            "0.%s" % x for x in range(start_version[1], int(current_version_info[1]) + 1)
-        ]
+        version_list = list(
+            f"0.{x}" for x in range(start_version[1], int(current_version_info[1]) + 1)
+        )
     else:
         # TODO: When 1.0.0 add code to handle 0.x version list
         version_list = []
         pass
     context["version_list"] = version_list
-    context["version_label"] = _get_version_label(current_version)
+    context["version_label"] = _get_version_label()
 
 
-def _get_version_label(current_version):
+def _get_version_label():
     if not os.getenv("EXPERIMENTS_DEV_DOCS", None):
         return release
     else:
@@ -209,18 +211,19 @@ def _get_version_label(current_version):
 
 
 def setup(app):
+    """Set up plugins."""
     app.connect("config-inited", _get_versions)
     app.connect("autodoc-skip-member", maybe_skip_member)
 
-
-# Hardcoded list of class variables to skip in autodoc to avoid warnings
-# Should come up with better way to address this
 
 from qiskit_experiments.curve_analysis import ParameterRepr
 from qiskit_experiments.curve_analysis import SeriesDef
 
 
 def maybe_skip_member(app, what, name, obj, skip, options):
+    """Hardcoded list of class variables to skip in autodoc to avoid warnings.
+    TODO: Fix class attribute generation to avoid hardcoding.
+    """
     skip_names = [
         "analysis",
         "set_run_options",
