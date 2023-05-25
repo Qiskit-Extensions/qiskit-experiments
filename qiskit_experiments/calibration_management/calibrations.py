@@ -1355,7 +1355,7 @@ class Calibrations:
     def save(
         self,
         file_type: str = "csv",
-        folder: str = None,
+        folder: str = "",
         overwrite: bool = False,
         file_prefix: str = "",
         most_recent_only: bool = False,
@@ -1390,13 +1390,9 @@ class Calibrations:
         """
         warnings.warn("Schedules are only saved in text format. They cannot be re-loaded.")
 
-        cwd = os.getcwd()
-        if folder:
-            os.chdir(folder)
-
-        parameter_config_file = file_prefix + "parameter_config.csv"
-        parameter_value_file = file_prefix + "parameter_values.csv"
-        schedule_file = file_prefix + "schedules.csv"
+        parameter_config_file = os.path.join(folder, file_prefix + "parameter_config.csv")
+        parameter_value_file = os.path.join(folder, file_prefix + "parameter_values.csv")
+        schedule_file = os.path.join(folder, file_prefix + "schedules.csv")
 
         if os.path.isfile(parameter_config_file) and not overwrite:
             raise CalibrationError(
@@ -1450,8 +1446,6 @@ class Calibrations:
 
         else:
             raise CalibrationError(f"Saving to .{file_type} is not yet supported.")
-
-        os.chdir(cwd)
 
     def schedule_information(self) -> Tuple[List[str], List[Dict]]:
         """Get the information on the schedules stored in the calibrations.
