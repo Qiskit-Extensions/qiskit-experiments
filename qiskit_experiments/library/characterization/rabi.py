@@ -26,6 +26,7 @@ from qiskit_experiments.framework import BaseExperiment, Options
 from qiskit_experiments.framework.restless_mixin import RestlessMixin
 from qiskit_experiments.curve_analysis import ParameterRepr, OscillationAnalysis
 from qiskit_experiments.warnings import qubit_deprecate
+from qiskit_experiments.library.characterization import CrossResRabiAnalysis
 
 
 class Rabi(BaseExperiment, RestlessMixin):
@@ -112,6 +113,7 @@ class Rabi(BaseExperiment, RestlessMixin):
         self.analysis.set_options(
             result_parameters=[ParameterRepr("freq", self.__outcome__)],
             normalization=True,
+
         )
         self.analysis.plotter.set_figure_options(
             xlabel="Amplitude",
@@ -215,3 +217,158 @@ class EFRabi(Rabi):
         circ = QuantumCircuit(1)
         circ.x(0)
         return circ
+
+
+class CrossResRabi(BaseExperiment):
+    """An experiment that scans a cross resonance amplitude to calibrate rotations angle.
+
+    # section: overview
+
+        This experiment takes a user provided schedule for cross resonance,
+        which is attached to experiment circuits.
+
+        .. parsed-literal::
+
+                 ┌──────────────────────────┐
+            q_0: ┤0                         ├───
+                 │  CrossResRabi(amplitude) │┌─┐
+            q_1: ┤1                         ├┤M├
+                 └──────────────────────────┘└╥┘
+            c: 1/═════════════════════════════╩═
+                                              0
+
+        This experiment measures only target qubit.
+
+    # section: example
+
+        User can build parameterized schedule and provide as follows:
+
+        .. code-block:: python
+
+            from qiskit_experiments.library import CrossResRabi
+            from qiskit import pulse
+            from qiskit.providers.fake_provider import FakeHanoiV2
+            from math import pi
+
+            amp_param = CrossResRabi.parameter
+            backend = FakeHanoiV2()
+
+            with pulse.build(default_alignment="sequential") as ecr:
+                pulse.play(
+                    pulse.GaussianSquare(
+                        800, amp_param, 64, risefall_sigma_ratio=2, angle=0
+                        ),
+                    pulse.ControlChannel(0),
+                )
+                pulse.call(backend.target["x"][(0, )].calibration)
+                pulse.play(
+                    pulse.GaussianSquare(
+                        800, amp_param, 64, risefall_sigma_ratio=2, angle=pi
+                        ),
+                    pulse.ControlChannel(0),
+                )
+
+            exp = CrossResRabi((0,), backend, schedule=ecr)
+
+        Note that this example code attaches an echoed cross resonance sequence to the experiment.
+        The sign of controlled rotation terms (ZX, ZY) is control qubit state dependent,
+        and it may constructively or destructively interfere with local terms (IX, IY).
+        Since the echo sequence eliminates the local terms, above example code may give you
+        state independent Rabi rate.
+
+    # section: analysis_ref
+        :class:`~qiskit_experiments.curve_analysis.OscillationAnalysis`
+
+    """
+
+    parameter = Parameter("amplitude")
+    """Qiskit Parameter object used to create parameterized circuits."""
+
+    def __init__(
+        self,
+        physical_qubits: Sequence[int],
+        backend: Optional[Backend] = None,
+        **experiment_options,
+    ):
+        """Create new experiment.
+
+        Args:
+            physical_qubits: Two element sequence of control and target qubit index.
+            backend: Optional, the backend to run the experiment on.
+            experiment_options: See ``self.default_experiment_options`` for details.
+        """
+        super().__init__(
+            physical_qubits=physical_qubits,
+            analysis=CrossResRabiAnalysis(),
+            backend=backend,
+        )
+        if experiment_options:
+            self.set_experiment_options(**experiment_options)
+
+    @classmethod
+    def _default_experiment_options(cls) -> Options:
+        """Default experiment options.
+
+        Experiment Options:
+            amplitudes (list[float]): The list of amplitudes that will be scanned
+                in the experiment. If not set, then ``num_amplitudes``
+                evenly spaced amplitudes between ``min_amplitude`` and
+                ``max_amplitude`` are used. If ``amplitudes`` is set,
+                these experiment options are ignored.
+            min_amplitude (float): Minimum amplitude to use.
+            max_amplitude (float): Maximum amplitude to use.
+            num_amplitudes (int): Number of circuits to use for parameter scan.
+            schedule (ScheduleBlock): The Schedule that will be used in the
+                experiment. This schedule must be parameterized with the
+                parameter object ``CrossResRabi.parameter``.
+        """
+        options = super()._default_experiment_options()
+        options.update_options(
+            amplitudes=None,
+            min_amplitude=-0.7,
+            max_amplitude=0.7,
+            num_amplitudes=51,
+            schedule=None,
+        )
+        return options
+
+    def parameters(self) -> np.ndarray:
+        """Return parameters to scan."""
+        opt = self.experiment_options
+
+        if self.experiment_options.amplitudes:
+            return np.asarray(opt.amplitudes, dtype=float)
+        return np.linspace(opt.min_amplitude, opt.max_amplitude, opt.num_amplitudes)
+
+    def parameterized_circuits(self) -> Tuple[QuantumCircuit, ...]:
+        """Return parameterized circuits."""
+        opt = self.experiment_options
+        cr_rabi_gate = Gate("CrossResRabi", 2, [self.parameter])
+
+        if opt.schedule is None:
+            raise RuntimeError("Cross resonance schedule is not set in the experiment options.")
+
+        if self.parameter not in opt.schedule.parameters:
+            raise RuntimeError(
+                f"Specified schedule {opt.schedule.name} might be parameterized with "
+                "parameter objects that this experiment cannot recognize. "
+                f"Please build your schedule with '{self.__class__.__name__}.parameter.'"
+            )
+
+        circuit = QuantumCircuit(2, 1)
+        circuit.append(cr_rabi_gate, [0, 1])
+        circuit.measure(1, 0)
+        circuit.add_calibration(cr_rabi_gate, self.physical_qubits, opt.schedule)
+
+        return (circuit,)
+
+    def circuits(self) -> List[QuantumCircuit]:
+        temp_circ = self.parameterized_circuits()[0]
+
+        circs = []
+        for param in self.parameters():
+            assigned = temp_circ.assign_parameters({self.parameter: param}, inplace=False)
+            assigned.metadata = {"xval": param}
+            circs.append(assigned)
+
+        return circs

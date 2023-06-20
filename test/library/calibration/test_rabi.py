@@ -22,7 +22,7 @@ from qiskit.providers.basicaer import QasmSimulatorPy
 from qiskit.qobj.utils import MeasLevel
 
 from qiskit_experiments.framework import ExperimentData, ParallelExperiment
-from qiskit_experiments.library import Rabi, EFRabi
+from qiskit_experiments.library import Rabi, EFRabi, CrossResRabi
 
 from qiskit_experiments.curve_analysis.standard_analysis.oscillation import OscillationAnalysis
 from qiskit_experiments.data_processing.data_processor import DataProcessor
@@ -161,6 +161,41 @@ class TestEFRabi(QiskitExperimentsTestCase):
         """Test round trip JSON serialization"""
         exp = EFRabi([0], self.sched)
         self.assertRoundTripSerializable(exp)
+
+
+class TestCrossResRabi(QiskitExperimentsTestCase):
+    """Test case for cross resonance Rabi and calibration."""
+
+    def test_raise_unrecognized_parameter(self):
+        """Test raise an error when user build schedule with own parameter object."""
+        with pulse.build() as sched:
+            pulse.play(
+                pulse.Constant(duration=100, amp=Parameter("amplitude")),
+                pulse.ControlChannel(0),
+            )
+        exp = CrossResRabi(physical_qubits=(0, 1), schedule=sched)
+        with self.assertRaises(RuntimeError):
+            exp.parameterized_circuits()
+
+    def test_get_parameters(self):
+        """Test if parameters are expected ndarray."""
+        exp = CrossResRabi(
+            physical_qubits=(0, 1),
+            min_amplitude=-0.1,
+            max_amplitude=0.1,
+            num_amplitudes=11,
+        )
+        np.testing.assert_array_equal(exp.parameters(), np.linspace(-0.1, 0.1, 11))
+
+    def test_return_parameter(self):
+        """Test if experiment returns expected quantity."""
+        exp = CrossResRabi(physical_qubits=(0, 1))
+        self.assertEqual(exp.analysis.options.result_parameters[0].repr, "cross_res_rabi_rate")
+
+    def test_end_to_end(self):
+        """End-to-end testing of CrossResRabi experiment."""
+        # TODO write this test
+        pass
 
 
 class TestRabiCircuits(QiskitExperimentsTestCase):

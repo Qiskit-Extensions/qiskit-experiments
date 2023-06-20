@@ -32,6 +32,7 @@ Experiments
     EchoedCrossResonanceHamiltonian
     Rabi
     EFRabi
+    CrossResRabi
     HalfAngle
     FineAmplitude
     FineXAmplitude
@@ -64,6 +65,7 @@ Analysis
     T2RamseyAnalysis
     T2HahnAnalysis
     TphiAnalysis
+    CrossResRabiAnalysis
     CrossResonanceHamiltonianAnalysis
     DragCalAnalysis
     FineAmplitudeAnalysis
@@ -86,6 +88,7 @@ from .analysis import (
     T1KerneledAnalysis,
     T2HahnAnalysis,
     TphiAnalysis,
+    CrossResRabiAnalysis,
     CrossResonanceHamiltonianAnalysis,
     ReadoutAngleAnalysis,
     ResonatorSpectroscopyAnalysis,
@@ -102,7 +105,7 @@ from .t2ramsey import T2Ramsey
 from .t2hahn import T2Hahn
 from .tphi import Tphi
 from .cr_hamiltonian import CrossResonanceHamiltonian, EchoedCrossResonanceHamiltonian
-from .rabi import Rabi, EFRabi
+from .rabi import Rabi, EFRabi, CrossResRabi
 from .half_angle import HalfAngle
 from .fine_amplitude import FineAmplitude, FineXAmplitude, FineSXAmplitude, FineZXAmplitude
 from .ramsey_xy import RamseyXY, StarkRamseyXY

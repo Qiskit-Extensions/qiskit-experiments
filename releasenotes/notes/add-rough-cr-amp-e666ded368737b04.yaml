@@ -1,0 +1,5 @@
+---
+features:
+  - |
+    Add characterization and calibration experiment for cross resonance amplitude,
+    :class:`.CrossResRabi` and :class:`.CrossResRoughAmplitudeCal`, respectively.

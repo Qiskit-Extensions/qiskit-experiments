@@ -20,6 +20,7 @@ from .t2hahn_analysis import T2HahnAnalysis
 from .t1_analysis import T1Analysis
 from .t1_analysis import T1KerneledAnalysis
 from .tphi_analysis import TphiAnalysis
+from .cr_rabi_analysis import CrossResRabiAnalysis
 from .cr_hamiltonian_analysis import CrossResonanceHamiltonianAnalysis
 from .readout_angle_analysis import ReadoutAngleAnalysis
 from .local_readout_error_analysis import LocalReadoutErrorAnalysis

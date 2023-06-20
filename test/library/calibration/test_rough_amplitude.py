@@ -175,3 +175,12 @@ class TestSpecializations(QiskitExperimentsTestCase):
         self.assertTrue(
             abs(self.cals.get_parameter_value("amp", 0, "sx12") * (4 / 5) - default_amp / 2) < tol
         )
+
+
+class TestCrossResRoughAmplitudeCal(QiskitExperimentsTestCase):
+    """Test case for CrossResRoughAmplitudeCal experiment."""
+
+    def test_end_to_end(self):
+        """End-to-end testing of calibration experiment."""
+        # TODO implement this
+        pass

@@ -67,6 +67,7 @@ Some experiments also have a calibration experiment version.
     ~characterization.FineSXAmplitude
     ~characterization.Rabi
     ~characterization.EFRabi
+    ~characterization.CrossResRabi
     ~characterization.RamseyXY
     ~characterization.FineFrequency
     ~characterization.ReadoutAngle
@@ -138,6 +139,7 @@ See :doc:`/tutorials/calibrations` for examples.
     ~calibration.RoughAmplitudeCal
     ~calibration.RoughXSXAmplitudeCal
     ~calibration.EFRoughXSXAmplitudeCal
+    ~calibration.CrossResRoughAmplitudeCal
 
 """
 from .calibration import (
@@ -148,6 +150,7 @@ from .calibration import (
     RoughAmplitudeCal,
     RoughXSXAmplitudeCal,
     EFRoughXSXAmplitudeCal,
+    CrossResRoughAmplitudeCal,
     FineAmplitudeCal,
     FineXAmplitudeCal,
     FineSXAmplitudeCal,
@@ -172,6 +175,7 @@ from .characterization import (
     FineSXDrag,
     Rabi,
     EFRabi,
+    CrossResRabi,
     HalfAngle,
     FineAmplitude,
     FineXAmplitude,

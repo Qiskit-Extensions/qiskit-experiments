@@ -22,7 +22,7 @@ from qiskit.providers.backend import Backend
 
 from qiskit_experiments.framework import ExperimentData
 from qiskit_experiments.calibration_management import BaseCalibrationExperiment, Calibrations
-from qiskit_experiments.library.characterization import Rabi
+from qiskit_experiments.library.characterization import Rabi, CrossResRabi
 from qiskit_experiments.calibration_management.update_library import BaseUpdater
 from qiskit_experiments.warnings import qubit_deprecate
 
@@ -288,3 +288,93 @@ class EFRoughXSXAmplitudeCal(RoughAmplitudeCal):
         if self._cals.has_template("x", self.physical_qubits):
             schedule = self._cals.get_schedule("x", self.physical_qubits)
             circuit.add_calibration("x", self.physical_qubits, schedule)
+
+
+class CrossResRoughAmplitudeCal(BaseCalibrationExperiment, CrossResRabi):
+    """A calibration version of the CrossResRabi experiment."""
+
+    def __init__(
+        self,
+        physical_qubits: Sequence[int],
+        calibrations: Calibrations,
+        schedule_name: str = "ecr",
+        cal_parameter_name: str = "amp",
+        auto_update: bool = True,
+        group: str = "default",
+        backend: Optional[Backend] = None,
+    ):
+        """Create new experiment.
+
+        Args:
+            physical_qubits: Two element sequence of control and target qubit index.
+            calibrations: The calibrations instance with the schedules.
+            schedule_name: The name of the schedule to calibrate.
+            cal_parameter_name: The name of the parameter in the schedule to update.
+            auto_update: Whether or not to automatically update the calibrations.
+            group: The group of calibration parameters to use.
+            backend: Optional, the backend to run the experiment on.
+        """
+        schedule = calibrations.get_schedule(
+            name=schedule_name,
+            qubits=tuple(physical_qubits),
+            assign_params={cal_parameter_name: CrossResRabi.parameter},
+            group=group,
+        )
+        super().__init__(
+            calibrations,
+            physical_qubits,
+            schedule=schedule,
+            backend=backend,
+            cal_parameter_name=cal_parameter_name,
+            auto_update=auto_update,
+        )
+        self.set_experiment_options(
+            angle_schedules=[
+                AnglesSchedules(
+                    target_angle=np.pi / 2,
+                    parameter=cal_parameter_name,
+                    schedule=schedule_name,
+                    previous_value=None,
+                ),
+            ]
+        )
+
+    @classmethod
+    def _default_experiment_options(cls):
+        """Default experiment options.
+
+        Experiment Options:
+            angle_schedules (list[AngleSchedules]): A list of parameter value
+                information. Each entry of the list is a tuple of
+                the target angle, the name of parameter to update,
+                the name of associated schedule to update, and previous parameter value.
+        """
+        options = super()._default_experiment_options()
+        options.update_options(angle_schedules=None)
+        return options
+
+    def _metadata(self):
+        metadata = super()._metadata()
+        metadata["angles_schedules"] = self.experiment_options.angle_schedules
+
+        return metadata
+
+    def _attach_calibrations(self, circuit: QuantumCircuit):
+        pass
+
+    def update_calibrations(self, experiment_data: ExperimentData):
+        rabi_rate_o1 = 2 * np.pi * BaseUpdater.get_value(experiment_data, "cross_res_rabi_rate_o1")
+        rabi_rate_o3 = 2 * np.pi * BaseUpdater.get_value(experiment_data, "cross_res_rabi_rate_o3")
+        group = experiment_data.metadata["cal_group"]
+
+        for angle, param, schedule, _ in experiment_data.metadata["angles_schedules"]:
+            candidates = np.roots([rabi_rate_o3, 0.0, rabi_rate_o1, -angle])
+            value = min(candidates[candidates > 0])
+            BaseUpdater.add_parameter_value(
+                self._cals,
+                experiment_data,
+                value,
+                param,
+                schedule,
+                group,
+            )
