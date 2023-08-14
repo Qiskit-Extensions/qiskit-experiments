@@ -53,6 +53,36 @@ class T2Hahn(BaseExperiment):
         the delay in the metadata is the total delay which is delay * (num_echoes +1)
         The circuits are run on the device or on a simulator backend.
 
+    # section: example
+
+        Here's a minimal working example:
+
+        .. jupyter-execute::
+            :hide-code:
+
+            from qiskit_experiments.test.t2hahn_backend import T2HahnBackend
+
+            osc_freq = 0.1
+            estimated_t2hahn = 20
+
+            backend = T2HahnBackend(
+                            t2hahn=[estimated_t2hahn],
+                            frequency=[osc_freq],
+                            initialization_error=[0.0],
+                            readout0to1=[0.02],
+                            readout1to0=[0.02],
+                       )
+
+        .. jupyter-execute::
+
+            from qiskit_experiments.library import T2Hahn
+
+            exp = T2Hahn(physical_qubits = (0,),
+                         delays = [1e-6, 5e-6, 10e-6])
+
+            exp_data = exp.run(backend).block_for_results()
+            exp_data.figure(0)
+
     # section: manual
         :doc:`/manuals/characterization/t2hahn`
 
@@ -85,7 +115,7 @@ class T2Hahn(BaseExperiment):
         backend: Optional[Backend] = None,
     ):
         """
-        Initialize the T2 - Hahn Echo class
+        Initialize the T2 Hahn Echo class.
 
         Args:
             physical_qubits: a single-element sequence containing the qubit whose T2 is to be

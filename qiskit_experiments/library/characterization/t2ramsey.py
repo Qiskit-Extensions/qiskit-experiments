@@ -38,20 +38,35 @@ class T2Ramsey(BaseExperiment):
         :math:`T_2`, which is measured by :class:`.T2Hahn`, :math:`T_2^*` is sensitive
         to inhomogenous broadening.
 
-        This experiment consists of a series of circuits of the form
+    # section: example
 
-        .. parsed-literal::
+        Here's a minimal working code example:
 
-                 ┌───┐┌──────────────┐┌──────┐ ░ ┌───┐ ░ ┌─┐
-            q_0: ┤ H ├┤   DELAY(t)   ├┤ P(λ) ├─░─┤ H ├─░─┤M├
-                 └───┘└──────────────┘└──────┘ ░ └───┘ ░ └╥┘
-            c: 1/═════════════════════════════════════════╩═
-                                                        0
+        .. jupyter-execute::
+            :hide-code:
 
-        for each *t* from the specified delay times, where
-        :math:`\lambda =2 \pi \times {osc\_freq}`,
-        and the delays are specified by the user.
-        The circuits are run on the device or on a simulator backend.
+            from qiskit_experiments.test.noisy_delay_aer_simulator import NoisyDelayAerBackend
+
+            t2 = 100e-6
+            backend = NoisyDelayAerBackend([t2 * 2], [t2])
+
+        .. jupyter-execute::
+
+            from qiskit_experiments.library import T2Ramsey
+            import numpy as np
+
+            exp = T2Ramsey(physical_qubits = (0,),
+                     delays = np.arange(1e-6, 50e-6, 2e-6),
+                     osc_freq = 1e5)
+            exp_data = exp.run(backend).block_for_results()
+            exp_data.figure(0)
+
+        The experiment executes a series of circuits with this form:
+
+        .. jupyter-execute::
+
+            exp.circuits()[0].draw("mpl")
+
 
     # section: manual
         :doc:`/manuals/characterization/t2ramsey`
