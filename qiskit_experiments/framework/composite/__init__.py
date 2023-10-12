@@ -18,3 +18,4 @@ from .composite_analysis import CompositeAnalysis
 # Composite experiment classes
 from .parallel_experiment import ParallelExperiment
 from .batch_experiment import BatchExperiment
+from .chained_experiment import ChainedExperiment

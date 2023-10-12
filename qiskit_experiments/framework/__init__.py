@@ -103,6 +103,7 @@ Composite Experiment Classes
 
     ParallelExperiment
     BatchExperiment
+    ChainedExperiment
     CompositeAnalysis
 
 Base Classes
@@ -143,6 +144,7 @@ from .experiment_data import ExperimentData
 from .composite import (
     ParallelExperiment,
     BatchExperiment,
+    ChainedExperiment,
     CompositeAnalysis,
 )
 from .json import ExperimentEncoder, ExperimentDecoder

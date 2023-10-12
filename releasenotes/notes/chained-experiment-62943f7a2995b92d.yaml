@@ -1,0 +1,7 @@
+---
+features:
+  - |
+    A new experiment class :class:`.ChainedExperiment` is added. This experiment
+    allows users to run several experiments one after another. Users can also
+    specify how the chained experiment transitions from one experiment to the
+    next allowing the execution of complex calibration chains.
