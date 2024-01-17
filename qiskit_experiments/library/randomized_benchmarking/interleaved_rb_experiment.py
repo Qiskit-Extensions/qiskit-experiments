@@ -12,6 +12,7 @@
 """
 Interleaved RB Experiment class.
 """
+import copy
 import itertools
 import warnings
 from typing import Union, Iterable, Optional, List, Sequence, Tuple
@@ -20,14 +21,11 @@ from numpy.random import Generator
 from numpy.random.bit_generator import BitGenerator, SeedSequence
 
 from qiskit.circuit import QuantumCircuit, Instruction, Gate, Delay
-from qiskit.compiler import transpile
 from qiskit.exceptions import QiskitError
 from qiskit.providers.backend import Backend
 from qiskit.quantum_info import Clifford
-from qiskit.transpiler.exceptions import TranspilerError
 from qiskit_experiments.framework import Options
 from qiskit_experiments.framework.backend_timing import BackendTiming
-from .clifford_utils import _truncate_inactive_qubits
 from .clifford_utils import num_from_1q_circuit, num_from_2q_circuit
 from .interleaved_rb_analysis import InterleavedRBAnalysis
 from .standard_rb import StandardRB, SequenceElementType
@@ -59,7 +57,7 @@ class InterleavedRB(StandardRB):
 
     def __init__(
         self,
-        interleaved_element: Union[QuantumCircuit, Gate, Delay, Clifford],
+        interleaved_element: Union[QuantumCircuit, Gate, Delay],
         physical_qubits: Sequence[int],
         lengths: Iterable[int],
         backend: Optional[Backend] = None,
@@ -71,10 +69,9 @@ class InterleavedRB(StandardRB):
         """Initialize an interleaved randomized benchmarking experiment.
 
         Args:
-            interleaved_element: The element to interleave,
-                    given either as a Clifford element, gate, delay or circuit.
-                    If the element contains any non-basis gates,
-                    it will be transpiled with ``transpiled_options`` of this experiment.
+            interleaved_element: The Clifford element to interleave,
+                    given either as a gate, delay or circuit.
+                    It must consists only of basis gates if a backend is supplied.
                     If it is/contains a delay, its duration and unit must comply with
                     the timing constraints of the ``backend``
                     (:class:`~qiskit_experiments.framework.backend_timing.BackendTiming`
@@ -186,8 +183,7 @@ class InterleavedRB(StandardRB):
             A list of :class:`QuantumCircuit`.
 
         Raises:
-            QiskitError: If the ``interleaved_element`` provided to the constructor
-                cannot be transpiled.
+            QiskitError: If ``interleaved_element`` contains any gate not in backend's basis gates.
         """
         # Convert interleaved element to transpiled circuit operation and store it for speed
         self.__set_up_interleaved_op()
@@ -231,37 +227,16 @@ class InterleavedRB(StandardRB):
         return super()._to_instruction(elem, basis_gates)
 
     def __set_up_interleaved_op(self) -> None:
-        # Convert interleaved element to transpiled circuit operation and store it for speed
-        self._interleaved_op = self._interleaved_element
+        self._interleaved_op = copy.deepcopy(self._interleaved_element)
+        # Validate if interleaved element consists only of basis gates
         basis_gates = self._get_basis_gates()
-        # Convert interleaved element to circuit
-        if isinstance(self._interleaved_op, Clifford):
-            self._interleaved_op = self._interleaved_op.to_circuit()
-
-        if isinstance(self._interleaved_op, QuantumCircuit):
-            interleaved_circ = self._interleaved_op
-        elif isinstance(self._interleaved_op, Gate):
-            interleaved_circ = QuantumCircuit(self.num_qubits, name=self._interleaved_op.name)
-            interleaved_circ.append(self._interleaved_op, list(range(self.num_qubits)))
-        else:  # Delay
-            interleaved_circ = []
-
-        if basis_gates and any(i.operation.name not in basis_gates for i in interleaved_circ):
-            # Transpile circuit with non-basis gates and remove idling qubits
-            try:
-                interleaved_circ = transpile(
-                    interleaved_circ, self.backend, **vars(self.transpile_options)
-                )
-            except TranspilerError as err:
-                raise QiskitError("Failed to transpile interleaved_element.") from err
-            interleaved_circ = _truncate_inactive_qubits(
-                interleaved_circ, active_qubits=interleaved_circ.qubits[: self.num_qubits]
-            )
-            # Convert transpiled circuit to operation
-            if len(interleaved_circ) == 1:
-                self._interleaved_op = interleaved_circ.data[0].operation
-            else:
-                self._interleaved_op = interleaved_circ
+        if basis_gates:
+            ops = [self._interleaved_op]
+            if isinstance(self._interleaved_op, QuantumCircuit):
+                ops = [i.operation for i in self._interleaved_op]
+            for op in ops:
+                if op.name not in basis_gates:
+                    raise QiskitError(f"interleaved_element contains a non-basis gate: {op.name}")
 
         # Store interleaved operation as Instruction
         if isinstance(self._interleaved_op, QuantumCircuit):

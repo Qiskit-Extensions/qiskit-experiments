@@ -191,9 +191,9 @@ class TestStandardRB(QiskitExperimentsTestCase, RBTestMixin):
     def test_backend_with_directed_basis_gates(self):
         """Test if correct circuits are generated from backend with directed basis gates."""
         my_backend = copy.deepcopy(self.backend)
-        del my_backend.target["cx"][(1, 2)]  # make cx on {1, 2} one-sided
+        del my_backend.target["cx"][(1, 2)]  # make support only cx(2, 1)
 
-        exp = rb.StandardRB(physical_qubits=(1, 2), lengths=[3], num_samples=4, backend=my_backend)
+        exp = rb.StandardRB(physical_qubits=(2, 1), lengths=[3], num_samples=4, backend=my_backend)
         transpiled = exp._transpiled_circuits()
         for qc in transpiled:
             self.assertTrue(qc.count_ops().get("cx", 0) > 0)

@@ -215,8 +215,6 @@ class StandardRB(BaseExperiment, RestlessMixin):
 
         - Return None if this experiment is an RB with 3 or more qubits.
         - Return None if no basis gates are supplied via ``backend`` or ``transpile_options``.
-        - Return None if all 2q-gates supported on the physical qubits of the backend are one-way
-        directed (e.g. cx(0, 1) is supported but cx(1, 0) is not supported).
 
         In all those case when None are returned, basis transformation will be skipped in the
         circuit generation step (i.e. :meth:`circuits`) and it will be done in the successive
@@ -224,6 +222,9 @@ class StandardRB(BaseExperiment, RestlessMixin):
 
         Returns:
             Sorted basis gate names.
+
+        Raises:
+            QiskitError: If ``backend`` has no 2q-basis-gate on ``physical_qubits`` in 2Q RB case.
         """
         # 3 or more qubits case: Return None (skip basis transformation in circuit generation)
         if self.num_qubits > 2:
@@ -235,7 +236,7 @@ class StandardRB(BaseExperiment, RestlessMixin):
             if not basis_gates and self.backend:
                 if isinstance(self.backend, BackendV2):
                     basis_gates = self.backend.operation_names
-                elif isinstance(self.backend, BackendV1):
+                elif isinstance(self.backend, BackendV1):  # TODO: remove after BackendV2 simulator
                     basis_gates = self.backend.configuration().basis_gates
             return tuple(sorted(basis_gates)) if basis_gates else None
 
@@ -245,23 +246,27 @@ class StandardRB(BaseExperiment, RestlessMixin):
                 return True
             return len(coupling_map.reduce(self.physical_qubits).get_edges()) == 2
 
-        # 2 qubits case: Return all basis gates except for one-way directed 2q-gates.
-        # Return None if there is no bidirectional 2q-gates in basis gates.
+        # 2 qubits case: Return all basis gates except for one-way directed 2q-gate
+        # not defined on the physical qubits.
         if self.num_qubits == 2:
             basis_gates = self.transpile_options.get("basis_gates", [])
             if not basis_gates and self.backend:
                 if isinstance(self.backend, BackendV2) and self.backend.target:
-                    has_bidirectional_2q_gates = False
+                    has_2q_gate = False
                     for op_name in self.backend.target:
                         if self.backend.target.operation_from_name(op_name).num_qubits == 2:
-                            if is_bidirectional(self.backend.target.build_coupling_map(op_name)):
-                                has_bidirectional_2q_gates = True
-                            else:
-                                continue
-                        basis_gates.append(op_name)
-                    if not has_bidirectional_2q_gates:
-                        basis_gates = None
-                elif isinstance(self.backend, BackendV1):
+                            op_coupling = self.backend.target.build_coupling_map(op_name)
+                            if self.physical_qubits in op_coupling.get_edges():
+                                basis_gates.append(op_name)
+                                has_2q_gate = True
+                        else:
+                            basis_gates.append(op_name)
+                    if not has_2q_gate:
+                        raise QiskitError(
+                            f"Backend {self.backend.name} has no 2q-basis-gate on "
+                            f"physical qubit {self.physical_qubits}."
+                        )
+                elif isinstance(self.backend, BackendV1):  # TODO: remove after BackendV2 simulator
                     cmap = self.backend.configuration().coupling_map
                     if cmap is None or is_bidirectional(CouplingMap(cmap)):
                         basis_gates = self.backend.configuration().basis_gates
