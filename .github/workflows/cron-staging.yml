@@ -67,7 +67,7 @@ jobs:
           python -m pip install -U tox
           sudo apt-get install -y pandoc graphviz
       - name: Build Docs
-        run: tox -edocs-qiskit-main
+        run: tox -eqiskit-main --alt docs
       - name: Compress Artifacts
         run: |
           mkdir artifacts
