@@ -24,7 +24,7 @@ from qiskit_experiments.framework.restless_mixin import RestlessMixin
 from qiskit_experiments.curve_analysis.standard_analysis import ErrorAmplificationAnalysis
 
 
-class FineDrag(BaseExperiment, RestlessMixin):
+class FineDrag(RestlessMixin, BaseExperiment):
     r"""An experiment that performs fine characterizations of DRAG pulse coefficients.
 
     # section: overview

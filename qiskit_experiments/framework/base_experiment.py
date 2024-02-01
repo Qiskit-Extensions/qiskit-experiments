@@ -451,7 +451,7 @@ class BaseExperiment(ABC, StoreInitArgs):
     @classmethod
     def _default_run_options(cls) -> Options:
         """Default options values for the experiment :meth:`run` method."""
-        return Options(meas_level=MeasLevel.CLASSIFIED)
+        return Options(meas_level=MeasLevel.CLASSIFIED, restless=False)
 
     @property
     def run_options(self) -> Options:

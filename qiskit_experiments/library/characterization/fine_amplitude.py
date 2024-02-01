@@ -25,7 +25,7 @@ from qiskit_experiments.framework.restless_mixin import RestlessMixin
 from qiskit_experiments.library.characterization.analysis import FineAmplitudeAnalysis
 
 
-class FineAmplitude(BaseExperiment, RestlessMixin):
+class FineAmplitude(RestlessMixin, BaseExperiment):
     r"""An experiment to determine the optimal pulse amplitude by amplifying gate errors.
 
     # section: overview

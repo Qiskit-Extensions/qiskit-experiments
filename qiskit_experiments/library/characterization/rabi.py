@@ -27,7 +27,7 @@ from qiskit_experiments.framework.restless_mixin import RestlessMixin
 from qiskit_experiments.curve_analysis import ParameterRepr, OscillationAnalysis
 
 
-class Rabi(BaseExperiment, RestlessMixin):
+class Rabi(RestlessMixin, BaseExperiment):
     r"""An experiment that scans a pulse amplitude to calibrate rotations on the :math:`|0\rangle`
     <-> :math:`|1\rangle` transition.
 

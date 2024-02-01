@@ -37,9 +37,11 @@ class TestFineAmpEndToEndRestless(QiskitExperimentsTestCase):
 
         error = -np.pi * 0.01
         backend = MockRestlessFineAmp(error, np.pi, "x")
+        amp_exp = FineXAmplitude([0], backend)
 
         with self.assertRaises(DataProcessorError):
-            FineXAmplitude([0], backend).enable_restless(rep_delay=2.0)
+            amp_exp.enable_restless(rep_delay=2.0)
+            amp_exp.run()
 
         amp_exp = FineXAmplitude([0], backend)
         amp_exp.enable_restless(rep_delay=2.0, suppress_t1_error=True)

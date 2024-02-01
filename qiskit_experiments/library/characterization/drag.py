@@ -26,7 +26,7 @@ from qiskit_experiments.framework.restless_mixin import RestlessMixin
 from qiskit_experiments.library.characterization.analysis import DragCalAnalysis
 
 
-class RoughDrag(BaseExperiment, RestlessMixin):
+class RoughDrag(RestlessMixin, BaseExperiment):
     r"""An experiment that scans the DRAG parameter to find the optimal value.
 
     # section: overview

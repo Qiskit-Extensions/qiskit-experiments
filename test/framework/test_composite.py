@@ -65,7 +65,7 @@ class TestComposite(QiskitExperimentsTestCase):
         par_exp = ParallelExperiment([exp0, exp2], flatten_results=False)
 
         self.assertEqual(par_exp.experiment_options, par_exp._default_experiment_options())
-        self.assertEqual(par_exp.run_options, Options(meas_level=2))
+        self.assertEqual(par_exp.run_options, Options(meas_level=2, restless=False))
         self.assertEqual(par_exp.transpile_options, Options(optimization_level=0))
         self.assertEqual(par_exp.analysis.options, par_exp.analysis._default_options())
 

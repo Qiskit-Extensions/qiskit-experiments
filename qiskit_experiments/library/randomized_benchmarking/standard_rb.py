@@ -53,7 +53,7 @@ LOG = logging.getLogger(__name__)
 SequenceElementType = Union[Clifford, Integral, QuantumCircuit]
 
 
-class StandardRB(BaseExperiment, RestlessMixin):
+class StandardRB(RestlessMixin, BaseExperiment):
     """An experiment to characterize the error rate of a gate set on a device.
 
     # section: overview

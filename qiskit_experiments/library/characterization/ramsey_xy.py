@@ -23,7 +23,7 @@ from qiskit_experiments.framework.restless_mixin import RestlessMixin
 from qiskit_experiments.library.characterization.analysis import RamseyXYAnalysis
 
 
-class RamseyXY(BaseExperiment, RestlessMixin):
+class RamseyXY(RestlessMixin, BaseExperiment):
     r"""A sign-sensitive experiment to measure the frequency of a qubit.
 
     # section: overview
