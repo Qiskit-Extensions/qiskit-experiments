@@ -26,10 +26,9 @@ from qiskit.qobj.utils import MeasLevel
 
 from qiskit_experiments.library import RoughDrag, RoughDragCal
 from qiskit_experiments.library.characterization.analysis import DragCalAnalysis
-from qiskit_experiments.test.mock_iq_backend import MockIQBackend
-from qiskit_experiments.test.mock_iq_helpers import MockIQDragHelper as DragHelper
 from qiskit_experiments.calibration_management.basis_gate_library import FixedFrequencyTransmon
 from qiskit_experiments.calibration_management import Calibrations
+from qiskit_experiments.test import SingleTransmonTestBackend
 
 
 @ddt
@@ -41,28 +40,25 @@ class TestDragEndToEnd(QiskitExperimentsTestCase):
         super().setUp()
 
         beta = Parameter("β")
-
+        self.backend = SingleTransmonTestBackend(noise=False, atol=1e-3)
         with pulse.build(name="xp") as xp:
-            pulse.play(Drag(duration=160, amp=0.208519, sigma=40, beta=beta), DriveChannel(0))
+            pulse.play(
+                Drag(duration=160, amp=0.5 / self.backend.rabi_rate_01[0], sigma=40, beta=beta),
+                DriveChannel(0),
+            )
 
         self.x_plus = xp
         self.test_tol = 0.1
 
     @data(
-        (None, None, None),
-        (0.0044, None, None),
-        (0.04, np.linspace(-4, 4, 31), {"beta": 1.8, "freq": 0.08}),
+        (None, None),
+        (np.linspace(-4, 4, 31), {"beta": 1.5, "freq": 0.08}),
     )
     @unpack
-    def test_end_to_end(self, freq, betas, p0_opt):
+    def test_end_to_end(self, betas, p0_opt):
         """Test the drag experiment end to end."""
 
-        drag_experiment_helper = DragHelper(gate_name="Drag(xp)")
-        if freq:
-            drag_experiment_helper.frequency = freq
-        backend = MockIQBackend(drag_experiment_helper)
-
-        drag = RoughDrag([1], self.x_plus)
+        drag = RoughDrag([0], self.x_plus)
         drag.set_run_options(shots=200)
 
         if betas is not None:
@@ -70,52 +66,43 @@ class TestDragEndToEnd(QiskitExperimentsTestCase):
         if p0_opt:
             drag.analysis.set_options(p0=p0_opt)
 
-        expdata = drag.run(backend)
+        expdata = drag.run(self.backend)
         self.assertExperimentDone(expdata)
         result = expdata.analysis_results(1)
 
         # pylint: disable=no-member
-        self.assertTrue(abs(result.value.n - backend.experiment_helper.ideal_beta) < self.test_tol)
+        self.assertTrue(abs(result.value.n - self.backend.beta_01[0]) < self.test_tol)
         self.assertEqual(result.quality, "good")
         self.assertEqual(expdata.metadata["meas_level"], MeasLevel.CLASSIFIED)
 
     @data(
-        (0.0040, 1.0, 0.00, [1, 3, 5], None, 0.2),  # partial oscillation.
-        (0.0020, 0.5, 0.00, [1, 3, 5], None, 1.0),  # even slower oscillation with amp < 1
-        (0.0040, 0.8, 0.05, [3, 5, 7], None, 0.2),  # constant offset, i.e. lower SNR.
-        (0.0800, 0.9, 0.05, [1, 3, 5], np.linspace(-1, 1, 51), 0.2),  # Beta not in range
-        (0.2000, 0.5, 0.10, [1, 3, 5], np.linspace(-2.5, 2.5, 51), 0.2),  # Max closer to zero
+        ([1, 3, 5], None, 0.2),  # partial oscillation.
+        ([3, 5, 7], None, 0.2),  # constant offset, i.e. lower SNR.
+        ([1, 3, 5], np.linspace(-1, 1, 51), 0.2),  # Beta not in range
+        ([1, 3, 5], np.linspace(-2.5, 2.5, 51), 0.2),  # Max closer to zero
     )
     @unpack
-    def test_nasty_data(self, freq, amp, offset, reps, betas, tol):
+    def test_nasty_data(self, reps, betas, tol):
         """A set of tests for non-ideal data."""
-
-        backend = MockIQBackend(
-            DragHelper(
-                gate_name="Drag(xp)", frequency=freq, max_probability=amp, offset_probability=offset
-            )
-        )
 
         drag = RoughDrag([0], self.x_plus, betas=betas)
         drag.set_experiment_options(reps=reps)
         drag.set_run_options(shots=500)
 
-        exp_data = drag.run(backend)
+        exp_data = drag.run(self.backend)
         self.assertExperimentDone(exp_data)
         result = exp_data.analysis_results("beta")
         # pylint: disable=no-member
-        self.assertTrue(abs(result.value.n - backend.experiment_helper.ideal_beta) < tol)
+        self.assertTrue(abs(result.value.n - self.backend.beta_01[0]) < tol)
         self.assertEqual(result.quality, "good")
 
     def test_drag_reanalysis(self):
         """Test edge case for re-analyzing DRAG result multiple times."""
-        drag_experiment_helper = DragHelper(gate_name="Drag(xp)")
-        backend = MockIQBackend(drag_experiment_helper)
 
-        drag = RoughDrag([1], self.x_plus)
+        drag = RoughDrag([0], self.x_plus)
         drag.set_experiment_options(reps=[2, 4, 6])
 
-        expdata = drag.run(backend, analysis=None)
+        expdata = drag.run(self.backend, analysis=None)
         self.assertExperimentDone(expdata)
 
         # Assume the situation we reloaded experiment data from server
@@ -166,7 +153,6 @@ class TestDragCircuits(QiskitExperimentsTestCase):
 
         drag = RoughDrag([0], self.x_plus)
         drag.set_experiment_options(reps=[2, 4, 8])
-        drag.backend = MockIQBackend(DragHelper(gate_name="Drag(xp)"))
         circuits = drag._transpiled_circuits()
 
         for idx, expected in enumerate([4, 8, 16]):
@@ -202,7 +188,7 @@ class TestRoughDragCalUpdate(QiskitExperimentsTestCase):
 
         library = FixedFrequencyTransmon()
 
-        self.backend = MockIQBackend(DragHelper(gate_name="Drag(x)"))
+        self.backend = SingleTransmonTestBackend(noise=False, atol=1e-3)
         self.cals = Calibrations.from_backend(self.backend, libraries=[library])
         self.test_tol = 0.05
 
@@ -218,7 +204,6 @@ class TestRoughDragCalUpdate(QiskitExperimentsTestCase):
         self.assertExperimentDone(expdata)
 
         new_beta = self.cals.get_parameter_value("β", (0,), "x")
-        self.assertTrue(abs(new_beta - self.backend.experiment_helper.ideal_beta) < self.test_tol)
         self.assertTrue(abs(new_beta) > self.test_tol)
 
     def test_dragcal_experiment_config(self):

@@ -58,14 +58,14 @@ class TestMultiStateDiscrimination(QiskitExperimentsTestCase):
 
         d0 = pulse.DriveChannel(self.qubit)
 
-        sch_map = self.backend.defaults().instruction_schedule_map
+        sch_map = self.backend.instruction_schedule_map
         pulse_x = sch_map.get("x", (self.qubit,)).instructions[0][1].pulse
         amp_x = pulse_x.amp
         dur_x = pulse_x.duration
         sigma_x = pulse_x.sigma
         with pulse.build(name="x12") as x12:
             pulse.shift_frequency(anharm, d0)
-            pulse.play(pulse.Gaussian(dur_x, amp_x * self.backend.rabi_rate_12, sigma_x), d0)
+            pulse.play(pulse.Gaussian(dur_x, amp_x * self.backend.rabi_rate_12[0], sigma_x), d0)
             pulse.shift_frequency(-anharm, d0)
 
         self.schedules = {"x12": x12}

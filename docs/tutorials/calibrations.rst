@@ -45,7 +45,7 @@ This automatic updating can also be disabled using the ``auto_update`` flag.
 
 .. jupyter-execute::
 
-    backend = SingleTransmonTestBackend(5.2e9,-.25e9, 1e9, 0.8e9, noise=False, seed=100)
+    backend = SingleTransmonTestBackend(noise=False, seed=100)
     qubit = 0 
     cals=Calibrations.from_backend(backend)
     print(cals.get_inst_map())
@@ -163,7 +163,7 @@ Instantiate the experiment and draw the first circuit in the sweep:
 
 .. jupyter-execute::
 
-    freq01_estimate = backend.defaults().qubit_freq_est[qubit]
+    freq01_estimate = backend.qubit_properties(0).frequency
     frequencies = np.linspace(freq01_estimate-15e6, freq01_estimate+15e6, 51)
     spec = RoughFrequencyCal((qubit,), cals, frequencies, backend=backend)
     spec.set_experiment_options(amp=0.005)
@@ -362,7 +362,7 @@ the experiments. We base all our pulses on the default :math:`X` pulse of
 
 .. jupyter-execute::
 
-    x_pulse = backend.defaults().instruction_schedule_map.get('x', (qubit,)).instructions[0][1].pulse
+    x_pulse = backend.instruction_schedule_map.get('x', (qubit,)).instructions[0][1].pulse
     d0, inst_map = pulse.DriveChannel(qubit), pulse.InstructionScheduleMap()
 
 

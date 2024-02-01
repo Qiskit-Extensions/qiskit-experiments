@@ -63,7 +63,7 @@ class TestRabiEndToEnd(QiskitExperimentsTestCase):
         self.assertEqual(result.quality, "good")
         # The comparison is made against the object that exists in the backend for accurate testing
         self.assertAlmostEqual(
-            result.value.params["freq"], self.backend.rabi_rate_01, delta=test_tol
+            result.value.params["freq"], self.backend.rabi_rate_01[0], delta=test_tol
         )
 
     def test_wrong_processor(self):
@@ -127,7 +127,7 @@ class TestEFRabi(QiskitExperimentsTestCase):
         result = expdata.analysis_results(1)
 
         self.assertEqual(result.quality, "good")
-        self.assertTrue(abs(result.value.n - self.backend.rabi_rate_12) < test_tol)
+        self.assertTrue(abs(result.value.n - self.backend.rabi_rate_12[0]) < test_tol)
 
     def test_ef_rabi_circuit(self):
         """Test the EFRabi experiment end to end."""
