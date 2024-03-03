@@ -1,0 +1,5 @@
+---
+fixes:
+  - |
+    The :meth:`ExperimentData.completion_times` property was fixed to correctly
+    read the data from the `IBMCircuitJob` object.

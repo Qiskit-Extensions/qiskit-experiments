@@ -314,8 +314,10 @@ class ExperimentData:
         """Returns the completion times of the jobs."""
         job_times = {}
         for job_id, job in self._jobs.items():
-            if job is not None and "COMPLETED" in job.time_per_step():
-                job_times[job_id] = job.time_per_step().get("COMPLETED")
+            if job is not None:
+                job_times[job_id] = job.time_per_step().get(
+                    "COMPLETED", None
+                ) or job.time_per_step().get("finished", None)
 
         return job_times
 
