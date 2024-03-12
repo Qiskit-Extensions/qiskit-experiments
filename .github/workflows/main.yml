@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         python-version: [3.8, "3.12"]
-        os: ["ubuntu-latest", "macOS-latest", "windows-latest"]
+        os: ["ubuntu-latest", "macOS-14", "windows-latest"]
     steps:
       - name: Print Concurrency Group
         env:
