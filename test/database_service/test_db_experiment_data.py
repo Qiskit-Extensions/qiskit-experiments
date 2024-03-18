@@ -1272,7 +1272,7 @@ class TestDbExperimentData(QiskitExperimentsTestCase):
         self.assertEqual(exp_data.metadata["artifact_files"], {"test2.zip"})
 
     def test_add_duplicated_artifact(self):
-        """Tests behavior when adding an artifact with a duplicate ID."""
+        """Tests behavior when adding an artifact with a duplicate ID/name."""
         exp_data = ExperimentData()
 
         new_artifact1 = ArtifactData(artifact_id="0", name="test", data="foo")
@@ -1285,8 +1285,13 @@ class TestDbExperimentData(QiskitExperimentsTestCase):
             exp_data.add_artifacts(new_artifact2)
 
         # Overwrite the artifact with a new one of the same ID
-        exp_data.add_artifacts(new_artifact2, overwrite=True)
+        exp_data.add_artifacts(new_artifact2, overwrite_id=True)
         self.assertEqual(exp_data.artifacts(), [new_artifact2])
+
+        # Overwrite the artifact with a new one of the same name
+        new_artifact3 = ArtifactData(name="test", data="foo2")
+        exp_data.add_artifacts(new_artifact3, overwrite_name=True)
+        self.assertEqual(exp_data.artifacts(), [new_artifact2, new_artifact3])
 
     def test_delete_nonexistent_artifact(self):
         """Tests behavior when deleting a nonexistent artifact."""

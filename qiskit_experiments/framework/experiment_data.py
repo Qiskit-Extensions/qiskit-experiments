@@ -292,6 +292,12 @@ class ExperimentData:
         self._deleted_analysis_results = deque()
         self._deleted_artifacts = set()  # for holding unique artifact names to be deleted
 
+        # Add experiment options to artifacts
+        if self.experiment:
+            self.add_artifacts(
+                ArtifactData(name="experiment_config", data=self.experiment.config())
+            )
+
         # Child related
         # Add component data and set parent ID to current container
         self._child_data = ThreadSafeOrderedDict()
@@ -616,7 +622,7 @@ class ExperimentData:
             raise QiskitError("hgp can be only given in a <hub>/<group>/<project> format")
         self._db_data.hub, self._db_data.group, self._db_data.project = new_hgp.split("/")
 
-    def _clear_results(self):
+    def _clear_results(self, delete_artifacts=True):
         """Delete all currently stored analysis results and figures"""
         # Schedule existing analysis results for deletion next save call
         self._deleted_analysis_results.extend(list(self._analysis_results.result_ids))
@@ -624,12 +630,13 @@ class ExperimentData:
         # Schedule existing figures for deletion next save call
         # TODO: Fully delete artifacts from the service
         # Current implementation uploads empty files instead
-        for artifact in self._artifacts.values():
-            self._deleted_artifacts.add(artifact.name)
+        if delete_artifacts:
+            for artifact in self._artifacts.values():
+                self._deleted_artifacts.add(artifact.name)
+            self._artifacts = ThreadSafeOrderedDict()
         for key in self._figures.keys():
             self._deleted_figures.append(key)
         self._figures = ThreadSafeOrderedDict()
-        self._artifacts = ThreadSafeOrderedDict()
 
     @property
     def service(self) -> Optional[IBMExperimentService]:
@@ -1658,8 +1665,6 @@ class ExperimentData:
         total_metadata_size = sys.getsizeof(json.dumps(self.metadata, cls=self._json_encoder))
         return total_metadata_size > 10000
 
-    # Save and load from the database
-
     def save(
         self,
         suppress_errors: bool = True,
@@ -2647,24 +2652,45 @@ class ExperimentData:
         ret += f"\nArtifacts: {len(self._artifacts)}"
         return ret
 
-    def add_artifacts(self, artifacts: ArtifactData | list[ArtifactData], overwrite: bool = False):
+    @deprecate_arg(
+        name="overwrite",
+        new_alias="overwrite_id",
+        since="0.7",
+        package_name="qiskit-experiments",
+        pending=True,
+    )
+    def add_artifacts(
+        self,
+        artifacts: ArtifactData | list[ArtifactData],
+        overwrite_id: bool = False,
+        overwrite_name: bool = False,
+    ):
         """Add artifacts to experiment. The artifact ID must be unique.
 
         Args:
             artifacts: Artifact or list of artifacts to be added.
-            overwrite: Whether to overwrite the existing artifact.
+            overwrite_id: Whether to overwrite the existing artifact by ID.
+            overwrite_name: Whether to overwrite the existing artifact by name.
         """
         if isinstance(artifacts, ArtifactData):
             artifacts = [artifacts]
 
         for artifact in artifacts:
-            if artifact.artifact_id in self._artifacts and not overwrite:
+            if artifact.artifact_id in self._artifacts and not overwrite_id:
                 raise ValueError(
                     "An artifact with id {artifact.id} already exists."
-                    "Set overwrite to True if you want to overwrite the existing"
+                    "Set overwrite_id to True if you want to overwrite the existing"
                     "artifact."
                 )
-            self._artifacts[artifact.artifact_id] = artifact
+            if overwrite_name:
+                keys = self._find_artifact_keys(artifact.name)
+                if keys:
+                    for key in keys:
+                        self._artifacts[key] = artifact
+                else:
+                    self._artifacts[artifact.artifact_id] = artifact
+            else:
+                self._artifacts[artifact.artifact_id] = artifact
 
     def delete_artifact(
         self,
@@ -2704,6 +2730,8 @@ class ExperimentData:
             return self._artifacts.values()
 
         artifact_keys = self._find_artifact_keys(artifact_key)
+        if artifact_keys is None:
+            raise ExperimentEntryNotFound(f"Artifact key {artifact_key} not found.")
 
         out = []
         for key in artifact_keys:
@@ -2727,7 +2755,7 @@ class ExperimentData:
         if artifact_key not in self._artifacts:
             name_matched = [k for k, d in self._artifacts.items() if d.name == artifact_key]
             if len(name_matched) == 0:
-                raise ExperimentEntryNotFound(f"Artifact key {artifact_key} not found.")
+                return None
             return name_matched
         return [artifact_key]
 

@@ -154,6 +154,9 @@ class BaseAnalysis(ABC, StoreInitArgs):
             will be returned containing only the new analysis results and figures.
             This data can then be saved as its own experiment to a database service.
         """
+        experiment_data.add_artifacts(
+            ArtifactData(name="analysis_config", data=self.config()), overwrite_name=True
+        )
         # Make a new copy of experiment data if not updating results
         if not replace_results and _requires_copy(experiment_data):
             experiment_data = experiment_data.copy()
@@ -166,8 +169,7 @@ class BaseAnalysis(ABC, StoreInitArgs):
             analysis.set_options(**options)
 
         def run_analysis(expdata: ExperimentData):
-            # Clearing previous analysis data
-            experiment_data._clear_results()
+            experiment_data._clear_results(delete_artifacts=False)
 
             if not expdata.data():
                 warnings.warn("ExperimentData object data is empty.\n")
