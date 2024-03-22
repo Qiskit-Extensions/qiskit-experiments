@@ -16,10 +16,10 @@ Experiment Data class
 from __future__ import annotations
 import logging
 import re
-from typing import Dict, Optional, List, Union, Any, Callable, Tuple, TYPE_CHECKING
+from typing import Dict, Optional, List, Union, Any, Callable, Tuple, Iterator, TYPE_CHECKING
 from datetime import datetime, timezone
 from concurrent import futures
-from functools import wraps
+from functools import wraps, partial
 from collections import deque, defaultdict
 import contextlib
 import copy
@@ -34,6 +34,8 @@ import pandas as pd
 from dateutil import tz
 from matplotlib import pyplot
 from qiskit.result import Result
+from qiskit.result import marginal_distribution
+from qiskit.result.postprocess import format_counts_memory
 from qiskit.providers.jobstatus import JobStatus, JOB_FINAL_STATES
 from qiskit.exceptions import QiskitError
 from qiskit.providers import Job, Backend, Provider
@@ -717,6 +719,7 @@ class ExperimentData:
         Raises:
             TypeError: If the input data type is invalid.
         """
+
         if any(not future.done() for future in self._analysis_futures.values()):
             LOG.warning(
                 "Not all analysis has finished running. Adding new data may "
@@ -726,14 +729,144 @@ class ExperimentData:
             data = [data]
 
         # Directly add non-job data
-        with self._result_data.lock:
-            for datum in data:
-                if isinstance(datum, dict):
+        for datum in data:
+            if isinstance(datum, dict):
+                with self._result_data.lock:
                     self._result_data.append(datum)
-                elif isinstance(datum, Result):
-                    self._add_result_data(datum)
+            elif isinstance(datum, Result):
+                self._add_result_data(datum)
+            else:
+                raise TypeError(f"Invalid data type {type(datum)}.")
+        self.create_child_data()
+
+    @property
+    def __retrive_self_attrs_as_dict(self) -> dict:
+
+        """
+        retrive data about self to bootstrap
+        TODO: Write better docstring
+        """
+
+        return {
+            "backend": self.backend,
+            "tags": self.tags,
+            "auto_save": self.auto_save,
+            "service": self.service,
+            "provider": self.provider,
+            "backed_name": self.backend_name,
+            "notes": self.notes,
+            "start_datetime": self.start_datetime,
+            "verbose": self.verbose,
+            "source": self.source,
+            "share_level": self.share_level,
+            "experiment_type": self.experiment_type,
+        }
+
+    def create_child_data(self):  # pylint: disable=inconsistent-return-statements
+
+        """Bootstrap Experiment data containers
+
+        Returns:
+            self : return itself for method calling
+        """
+
+        if (component_metadata := self.metadata.get("component_metadata", None)) is None:
+            return
+
+        while (new_idx := len(self._child_data)) <= len(component_metadata):
+            child_data = ExperimentData(**self.__retrive_self_attrs_as_dict)
+            # Add automatically generated component experiment metadata
+            try:
+                this_data = component_metadata[new_idx].copy()
+                child_data.metadata.update(this_data)
+            except (KeyError, IndexError):
+                pass
+            try:
+                component_type = self.metadata["component_types"][new_idx]
+                child_data.experiment_type = component_type
+            except (KeyError, IndexError):
+                pass
+            self.add_child_data(child_data)
+
+        for data in self._result_data:
+            for idx, sub_data in self._decompose_component_data(data):
+                # NOTE : These lines for preventing multiple data addition,
+                # it occurs and I dont know why
+                if sub_data not in self.child_data(idx).data():
+                    self.child_data(idx).add_data(sub_data)
+
+        return self
+
+    @staticmethod
+    def _decompose_component_data(
+        composite_data: dict,
+    ) -> Iterator[tuple[int, dict]]:
+        """Return marginalized data for component experiments.
+
+        Args:
+            composite_data: a composite experiment result dictionary.
+
+        Yields:
+            Tuple of composite index and result dictionary for each component experiment.
+        """
+        metadata = composite_data.get("metadata", {})
+
+        tmp_sub_data = {
+            k: v for k, v in composite_data.items() if k not in ("metadata", "counts", "memory")
+        }
+        composite_clbits = metadata.get("composite_clbits", None)
+
+        if composite_clbits is not None and "memory" in composite_data:
+            # TODO use qiskit.result.utils.marginal_memory function implemented in Rust.
+            #  This function expects a complex data-type ndarray for IQ data,
+            #  while Qiskit Experiments stores IQ data in list format, i.e. [Re, Im].
+            #  This format is tied to the data processor module and we cannot easily switch.
+            #  We need to overhaul the data processor and related unit tests first.
+            memory = composite_data["memory"]
+            if isinstance(memory[0], str):
+                n_clbits = max(sum(composite_clbits, [])) + 1
+                formatter = partial(format_counts_memory, header={"memory_slots": n_clbits})
+                formatted_mem = list(map(formatter, memory))
+            else:
+                formatted_mem = np.array(memory, dtype=float)
+        else:
+            formatted_mem = None
+
+        for i, exp_idx in enumerate(metadata["composite_index"]):
+            sub_data = tmp_sub_data.copy()
+            try:
+                sub_data["metadata"] = metadata["composite_metadata"][i]
+            except (KeyError, IndexError):
+                sub_data["metadata"] = {}
+            if "counts" in composite_data:
+                if composite_clbits is not None:
+                    sub_data["counts"] = marginal_distribution(
+                        counts=composite_data["counts"],
+                        indices=composite_clbits[i],
+                    )
                 else:
-                    raise TypeError(f"Invalid data type {type(datum)}.")
+                    sub_data["counts"] = composite_data["counts"]
+            if "memory" in composite_data:
+                if isinstance(formatted_mem, list):
+                    # level 2
+                    idx = slice(-1 - composite_clbits[i][-1], -composite_clbits[i][0] or None)
+                    sub_data["memory"] = [shot[idx] for shot in formatted_mem]
+                elif isinstance(formatted_mem, np.ndarray):
+                    # level 1
+                    if len(formatted_mem.shape) == 2:
+                        # Averaged
+                        sub_data["memory"] = formatted_mem[composite_clbits[i]].tolist()
+                    elif len(formatted_mem.shape) == 3:
+                        # Single shot
+                        sub_data["memory"] = formatted_mem[:, composite_clbits[i]].tolist()
+                    else:
+                        raise ValueError(
+                            f"Invalid memory shape of {formatted_mem.shape}. "
+                            "This data cannot be marginalized."
+                        )
+                else:
+                    sub_data["memory"] = composite_data["memory"]
+            yield exp_idx, sub_data
 
     def add_jobs(
         self,
@@ -989,22 +1122,20 @@ class ExperimentData:
         if job_id not in self._jobs:
             self._jobs[job_id] = None
             self.job_ids.append(job_id)
-        with self._result_data.lock:
-            # Lock data while adding all result data
-            for i, _ in enumerate(result.results):
-                data = result.data(i)
-                data["job_id"] = job_id
-                if "counts" in data:
-                    # Format to Counts object rather than hex dict
-                    data["counts"] = result.get_counts(i)
-                expr_result = result.results[i]
-                if hasattr(expr_result, "header") and hasattr(expr_result.header, "metadata"):
-                    data["metadata"] = expr_result.header.metadata
-                data["shots"] = expr_result.shots
-                data["meas_level"] = expr_result.meas_level
-                if hasattr(expr_result, "meas_return"):
-                    data["meas_return"] = expr_result.meas_return
-                self._result_data.append(data)
+        for i, _ in enumerate(result.results):
+            data = result.data(i)
+            data["job_id"] = job_id
+            if "counts" in data:
+                # Format to Counts object rather than hex dict
+                data["counts"] = result.get_counts(i)
+            expr_result = result.results[i]
+            if hasattr(expr_result, "header") and hasattr(expr_result.header, "metadata"):
+                data["metadata"] = expr_result.header.metadata
+            data["shots"] = expr_result.shots
+            data["meas_level"] = expr_result.meas_level
+            if hasattr(expr_result, "meas_return"):
+                data["meas_return"] = expr_result.meas_return
+            self.add_data(data)
 
     def _retrieve_data(self):
         """Retrieve job data if missing experiment data."""
@@ -1036,7 +1167,7 @@ class ExperimentData:
                 try:
                     job = self.provider.retrieve_job(jid)
                     retrieved_jobs[jid] = job
-                except Exception:  # pylint: disable=broad-except
+                except (Exception, AttributeError):  # pylint: disable=broad-except
                     LOG.warning(
                         "Unable to retrieve data from job [Job ID: %s]: %s",
                         jid,

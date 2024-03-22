@@ -93,7 +93,7 @@ class MitigatedTomographyAnalysis(CompositeAnalysis):
         # Return list of experiment data containers for each component experiment
         # containing the marginalized data from the composite experiment
         roerror_analysis, tomo_analysis = self._analyses
-        roerror_data, tomo_data = self._component_experiment_data(experiment_data)
+        roerror_data, tomo_data = experiment_data.create_child_data().child_data()
 
         # Run readout error analysis
         roerror_analysis.run(roerror_data, replace_results=True).block_for_results()

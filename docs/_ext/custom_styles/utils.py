@@ -25,8 +25,8 @@ from sphinx.util.docstrings import prepare_docstring
 from qiskit_experiments.framework import BaseExperiment
 
 
-_parameter_regex = re.compile(r'(.+?)\(\s*(.*[^\s]+)\s*\):(.*[^\s]+)')
-_rest_role_regex = re.compile(r':(.+?) (.+?):\s*(.*[^\s]+)')
+_parameter_regex = re.compile(r"(.+?)\(\s*(.*[^\s]+)\s*\):(.*[^\s]+)")
+_rest_role_regex = re.compile(r":(.+?) (.+?):\s*(.*[^\s]+)")
 
 
 def _trim_empty_lines(docstring_lines: List[str]) -> List[str]:
@@ -80,7 +80,7 @@ def _generate_analysis_ref(
         raise Exception(f"Option docstring for analysis_ref is missing.")
 
     analysis_ref_lines = []
-    for line in lines[analysis_ref_start + 1:]:
+    for line in lines[analysis_ref_start + 1 :]:
         # add lines until hitting to next section
         if line.startswith("# section:"):
             break
