@@ -44,54 +44,53 @@ class BaseCalibrationExperiment(BaseExperiment, ABC):
 
     This abstract class extends a characterization experiment by turning it into a
     calibration experiment. Such experiments allow schedule management and updating of an
-    instance of :class:`.Calibrations`. Furthermore, calibration experiments also specify
-    an auto_update variable which, by default, is set to True. If this variable,
-    is True then the run method of the experiment will call :meth:`~.ExperimentData.block_for_results`
-    and update the calibrations instance once the backend has returned the data.
+    instance of :class:`~qiskit_experiments.calibration_management.Calibrations`. Furthermore, calibration experiments also specify
+    an `auto_update` variable which, by default, is set to True. If this variable
+    is True, then the `run` method of the experiment will call :meth:`~qiskit_experiments.base_experiment.ExperimentData.block_for_results`
+    and update the `Calibrations` instance once the backend has returned the data.
 
-    This mixin class inherits from the :class:`.BaseExperiment` class since calibration
-    experiments by default call :meth:`~.ExperimentData.block_for_results`. This ensures that the next
+    This mixin class inherits from the :class:`~qiskit_experiments.base_experiment.BaseExperiment` class since calibration
+    experiments by default call :meth:`~qiskit_experiments.base_experiment.ExperimentData.block_for_results`. This ensures that the next
     calibration experiment cannot proceed before the calibration parameters have been
     updated. Developers that wish to create a calibration experiment must subclass this
     base class and the characterization experiment. Therefore, developers that use this
     mixin class must pay special attention to their class definition. Indeed, the first
     class should be this mixin and the second class should be the characterization
-    experiment since the run method from the mixin must be used. For example, the rough
-    frequency calibration experiment is defined as
+    experiment since the `run` method from the mixin must be used. For example, the rough
+    frequency calibration experiment is defined as follows:
 
     .. code-block:: python
 
-        RoughFrequencyCal(BaseCalibrationExperiment, QubitSpectroscopy)
+        class RoughFrequency(BaseCalibrationExperiment, QubitSpectroscopy):
+            pass
 
-    This ensures that the ``run`` method of :class:`.RoughFrequencyCal` will be the
-    run method of the :class:`.BaseCalibrationExperiment` class. Furthermore, developers
-    must explicitly call the :meth:`__init__` methods of both parent classes.
+    This ensures that the `run` method of `RoughFrequency` will be the
+    `run` method of the `BaseCalibrationExperiment` class. Furthermore, developers
+    must explicitly call the `__init__` methods of both parent classes.
 
     Developers should strive to follow the convention that the first two arguments of
-    a calibration experiment are the qubit(s) and the :class:`.Calibrations` instance.
+    a calibration experiment are the qubit(s) and the :class:`~qiskit_experiments.calibration_management.Calibrations` instance.
 
     If the experiment uses custom schedules, which is typically the case, then
-    developers may chose to use the :meth:`get_schedules` method when creating the
-    circuits for the experiment. If :meth:`get_schedules` is used then the developer
-    must override at least one of the following methods used by :meth:`get_schedules`
+    developers may choose to use the `get_schedules` method when creating the
+    circuits for the experiment. If `get_schedules` is used, then the developer
+    must override at least one of the following methods used by `get_schedules`
     to set the schedules:
 
-    #. :meth:`_get_schedules_from_options`
+    #. `_get_schedules_from_options`
+    #. `_get_schedules_from_calibrations`
+    #. `_get_schedules_from_defaults`
 
-    #. :meth:`_get_schedules_from_calibrations`
+    These methods are called by `get_schedules`.
 
-    #. :meth:`_get_schedules_from_defaults`
-
-    These methods are called by :meth:`get_schedules`.
-
-    The :meth:`update_calibrations` method is responsible for updating the values of the parameters
-    stored in the instance of :class:`.Calibrations`. Here, :class:`BaseCalibrationExperiment`
-    provides a default update methodology that subclasses can override if a more elaborate behaviour
-    is needed. At the minimum the developer must set the variable :code:`_updater` which
-    should have an :code:`update` method and can be chosen from the library
-    :mod:`qiskit_experiments.calibration_management.update_library`. See also
-    :class:`qiskit_experiments.calibration_management.update_library.BaseUpdater`. If no updater
-    is specified the experiment will still run but no update of the calibrations will be performed.
+    The `update_calibrations` method is responsible for updating the values of the parameters
+    stored in the instance of :class:`~qiskit_experiments.calibration_management.Calibrations`. Here, `BaseCalibrationExperiment`
+    provides a default update methodology that subclasses can override if a more elaborate behavior
+    is needed. At the minimum, the developer must set the variable `_updater` which
+    should have an `update` method and can be chosen from the library
+    :mod:`~qiskit_experiments.calibration_management.update_library`. See also
+    :class:`~qiskit_experiments.calibration_management.update_library.BaseUpdater`. If no updater
+    is specified, the experiment will still run, but no update of the calibrations will be performed.
     """
 
     def __init_subclass__(cls, **kwargs):
