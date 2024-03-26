@@ -28,6 +28,7 @@ from qiskit_experiments.database_service import Qubit
 from qiskit_experiments.exceptions import AnalysisError
 from qiskit_experiments.framework import (
     ExperimentData,
+    FigureData,
     BaseExperiment,
     BaseAnalysis,
     AnalysisResultData,
@@ -162,6 +163,30 @@ class TestFramework(QiskitExperimentsTestCase):
         self.assertEqualExtended(expdata1, expdata2)
         self.assertEqualExtended(expdata1.analysis_results(), expdata2.analysis_results())
         self.assertEqual(result_ids, list(expdata2._deleted_analysis_results))
+
+    def test_analysis_replace_results_true_new_figure(self):
+        """Test running analysis with replace_results=True keeps figure data consistent"""
+        analysis = FakeAnalysis()
+        analysis.options.add_figures = True
+        analysis.options.figure_names = ["old_figure_name.svg"]
+
+        expdata = ExperimentData()
+        expdata.add_data(self.fake_job_data())
+        analysis.run(expdata, seed=54321)
+        self.assertExperimentDone(expdata)
+
+        # Assure all figure names map to valid figures
+        self.assertEqual(expdata.figure_names, ["old_figure_name.svg"])
+        self.assertIsInstance(expdata.figure("old_figure_name"), FigureData)
+
+        analysis.run(
+            expdata, replace_results=True, seed=12345, figure_names=["new_figure_name.svg"]
+        )
+        self.assertExperimentDone(expdata)
+
+        # Assure figure names have changed but are still valid
+        self.assertEqual(expdata.figure_names, ["new_figure_name.svg"])
+        self.assertIsInstance(expdata.figure("new_figure_name"), FigureData)
 
     def test_analysis_replace_results_false(self):
         """Test running analysis with replace_results=False"""

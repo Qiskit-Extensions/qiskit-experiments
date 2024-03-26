@@ -184,7 +184,7 @@ class BaseAnalysis(ABC, StoreInitArgs):
                         if not result.experiment:
                             result.experiment = expdata.experiment_type
                         if not result.device_components:
-                            result.device_components = self._get_experiment_components(expdata)
+                            result.device_components = analysis._get_experiment_components(expdata)
                         if not result.backend:
                             result.backend = expdata.backend_name
                         if not result.created_time:
@@ -204,7 +204,7 @@ class BaseAnalysis(ABC, StoreInitArgs):
                         if not result.experiment_id:
                             result.experiment_id = expdata.experiment_id
                         if not result.device_components:
-                            result.device_components = self._get_experiment_components(expdata)
+                            result.device_components = analysis._get_experiment_components(expdata)
                         if not result.experiment:
                             result.experiment = expdata.experiment_type
                         expdata.add_artifacts(result)
@@ -227,7 +227,7 @@ class BaseAnalysis(ABC, StoreInitArgs):
                             name=f"{expdata.experiment_type}_{qubits_repr}_{short_id}.svg",
                         )
                     figure_to_add.append(figure)
-                expdata.add_figures(figure_to_add, figure_names=self.options.figure_names)
+                expdata.add_figures(figure_to_add, figure_names=analysis.options.figure_names)
 
         experiment_data.add_analysis_callback(run_analysis)
 

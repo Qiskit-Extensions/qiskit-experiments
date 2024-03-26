@@ -1,0 +1,14 @@
+---
+fixes:
+  - |
+    :class:`.ExperimentData` was updated so that running analysis a second time
+    with ``replace_results=True`` does not result in the ``figure_names``
+    property having incorrect data (both old and new figure names if the names
+    changed). See `#1430
+    <https://github.com/Qiskit-Extensions/qiskit-experiments/pull/1430>`__.
+  - |
+    :class:`.BaseAnalysis` was updated to respect ``figure_names`` as a keyword
+    argument to the ``run()`` method. Previously, this argument was ignored and
+    ``figure_names`` could only be set as an analysis option prior to calling
+    ``run()``. See `#1430
+    <https://github.com/Qiskit-Extensions/qiskit-experiments/pull/1430>`__.

@@ -1067,6 +1067,7 @@ class TestDbExperimentData(QiskitExperimentsTestCase):
     def test_copy_figure_artifacts(self):
         """Test copy expdata figures and artifacts."""
         exp_data = FakeExperiment(experiment_type="qiskit_test").run(backend=FakeBackend())
+        exp_data.block_for_results()
         exp_data.add_figures(str.encode("hello world"))
         exp_data.add_artifacts(ArtifactData(name="test", data="foo"))
         copied = exp_data.copy(copy_results=True)

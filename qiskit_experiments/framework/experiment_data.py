@@ -630,6 +630,7 @@ class ExperimentData:
             self._deleted_figures.append(key)
         self._figures = ThreadSafeOrderedDict()
         self._artifacts = ThreadSafeOrderedDict()
+        self._db_data.figure_names.clear()
 
     @property
     def service(self) -> Optional[IBMExperimentService]:
