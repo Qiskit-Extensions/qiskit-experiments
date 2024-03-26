@@ -1,0 +1,7 @@
+---
+fixes:
+  - |
+    Fixes :class:`.ParallelExperiment` handling of `scheduling_method`
+    transpile option for `"asap"` and `"alap"` scheduling to correctly
+    pad the component experiment subcircuits so that the combined circuit
+    has a fixed duration on the experiments physical qubits.
