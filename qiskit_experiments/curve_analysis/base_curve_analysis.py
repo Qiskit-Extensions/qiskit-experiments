@@ -14,6 +14,7 @@
 Base class of curve analysis.
 """
 
+from collections import OrderedDict
 import warnings
 from abc import ABC, abstractmethod
 from typing import Dict, List, Union
@@ -29,6 +30,7 @@ from qiskit_experiments.framework import (
     BaseAnalysis,
     ExperimentData,
     Options,
+    AnalysisConfig,
 )
 from qiskit_experiments.visualization import (
     BaseDrawer,
@@ -422,3 +424,36 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
                 DeprecationWarning,
             )
             self.set_options(data_subfit_map=data_subfit_map)
+
+    def config(self) -> AnalysisConfig:
+        """Return the config dataclass for this analysis. We replicate the method from `BaseAnalysis`
+        because we cannot directly modify the returned object. This limitation arises from our use of
+        it hashable we use `dataclasses.dataclass(frozen=True)`  to ensure its hashability.
+        Additionally, we include the `plotter` and `drawer` options, which are specific to
+        this context."""
+        args = tuple(getattr(self, "__init_args__", OrderedDict()).values())
+        kwargs = dict(getattr(self, "__init_kwargs__", OrderedDict()))
+        # Only store non-default valued options
+        options = dict((key, getattr(self._options, key)) for key in self._set_options)
+        if isinstance(self.plotter, BasePlotter):
+            plotter = self.plotter.config()
+        else:
+            plotter = None
+
+        return AnalysisConfig(
+            cls=type(self),
+            args=args,
+            kwargs=kwargs,
+            options=options,
+            plotter=plotter,
+        )
+
+    @classmethod
+    def from_config(cls, config: Union[AnalysisConfig, Dict]) -> "BaseCurveAnalysis":
+        """Initialize a curve analysis class from analysis config"""
+        if isinstance(config, dict):
+            config = AnalysisConfig(**config)
+        ret = super().from_config(config)
+        if config.plotter:
+            ret.options.plotter = config.plotter.plotter()
+        return ret

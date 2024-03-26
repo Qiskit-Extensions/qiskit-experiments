@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from qiskit_experiments.framework import Options
+from qiskit_experiments.framework.configs import PlotterConfig
 from qiskit_experiments.visualization.drawers import BaseDrawer, SeriesName
 
 from ..style import PlotStyle
@@ -553,36 +554,39 @@ class BasePlotter(ABC):
         # Use drawer.set_figure_options so figure options are serialized.
         self.drawer.set_figure_options(**_drawer_figure_options)
 
-    def config(self) -> Dict:
+    def config(self) -> PlotterConfig:
         """Return the config dictionary for this drawing."""
         options = dict((key, getattr(self._options, key)) for key in self._set_options)
         figure_options = dict(
             (key, getattr(self._figure_options, key)) for key in self._set_figure_options
         )
-        drawer = self.drawer.__json_encode__()
+        drawer = self.drawer.config()
+        return PlotterConfig(
+            cls=type(self),
+            options=options,
+            figure_options=figure_options,
+            drawer=drawer,
+        )
 
-        return {
-            "cls": type(self),
-            "options": options,
-            "figure_options": figure_options,
-            "drawer": drawer,
-        }
+    @classmethod
+    def from_config(cls, config: Union[PlotterConfig, Dict]) -> "BasePlotter":
+        """Initialize a plotter class from analysis config"""
+        if isinstance(config, dict):
+            config = PlotterConfig(**config)
+
+        # Create plotter instance
+        ret = cls(config.drawer.drawer())
+        # if "options" in config:
+        if config.options:
+            ret.set_options(**config.options)
+        # if "figure_options" in config:
+        if config.figure_options:
+            ret.set_figure_options(**config.figure_options)
+        return ret
 
     def __json_encode__(self):
         return self.config()
 
     @classmethod
     def __json_decode__(cls, value):
-        ## Process drawer as it's needed to create a plotter
-        drawer_values = value["drawer"]
-        # We expect a subclass of BaseDrawer
-        drawer_cls: BaseDrawer = drawer_values["cls"]
-        drawer = drawer_cls.__json_decode__(drawer_values)
-
-        # Create plotter instance
-        instance = cls(drawer)
-        if "options" in value:
-            instance.set_options(**value["options"])
-        if "figure_options" in value:
-            instance.set_figure_options(**value["figure_options"])
-        return instance
+        return cls.from_config(value)

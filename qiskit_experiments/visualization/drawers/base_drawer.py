@@ -19,6 +19,8 @@ import numpy as np
 
 from qiskit_experiments.framework import Options
 
+from qiskit_experiments.framework.configs import DrawerConfig
+
 from ..style import PlotStyle
 from ..utils import ExtentTuple
 
@@ -552,27 +554,34 @@ class BaseDrawer(ABC):
     def figure(self):
         """Return figure object handler to be saved in the database."""
 
-    def config(self) -> Dict:
+    def config(self) -> DrawerConfig:
         """Return the config dictionary for this drawer."""
         options = dict((key, getattr(self._options, key)) for key in self._set_options)
         figure_options = dict(
             (key, getattr(self._figure_options, key)) for key in self._set_figure_options
         )
+        return DrawerConfig(
+            cls=type(self),
+            options=options,
+            figure_options=figure_options,
+        )
 
-        return {
-            "cls": type(self),
-            "options": options,
-            "figure_options": figure_options,
-        }
+    @classmethod
+    def from_config(cls, config: Union[DrawerConfig, Dict]) -> "BaseDrawer":
+        """Initialize a drawer class from analysis config"""
+        if isinstance(config, dict):
+            config = DrawerConfig(**config)
+        # Create Drawer instance
+        ret = cls()
+        if config.options:
+            ret.set_options(**config.options)
+        if config.figure_options:
+            ret.set_figure_options(**config.figure_options)
+        return ret
 
     def __json_encode__(self):
         return self.config()
 
     @classmethod
     def __json_decode__(cls, value):
-        instance = cls()
-        if "options" in value:
-            instance.set_options(**value["options"])
-        if "figure_options" in value:
-            instance.set_figure_options(**value["figure_options"])
-        return instance
+        return cls.from_config(value)
