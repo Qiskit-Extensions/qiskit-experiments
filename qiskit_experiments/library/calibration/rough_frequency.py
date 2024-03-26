@@ -20,7 +20,7 @@ from qiskit.providers.backend import Backend
 from qiskit_experiments.library.characterization.qubit_spectroscopy import QubitSpectroscopy
 from qiskit_experiments.library.characterization.ef_spectroscopy import EFSpectroscopy
 from qiskit_experiments.calibration_management.update_library import Frequency
-from qiskit_experiments.calibration_management.calibrations import Calibrations
+from qiskit_experiments.calibration_management.base_calibrations import BaseCalibrations
 from qiskit_experiments.calibration_management.base_calibration_experiment import (
     BaseCalibrationExperiment,
 )
@@ -33,7 +33,7 @@ class RoughFrequencyCal(BaseCalibrationExperiment, QubitSpectroscopy):
     def __init__(
         self,
         physical_qubits: Sequence[int],
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         frequencies: Iterable[float],
         backend: Optional[Backend] = None,
         auto_update: bool = True,
@@ -86,7 +86,7 @@ class RoughEFFrequencyCal(BaseCalibrationExperiment, EFSpectroscopy):
     def __init__(
         self,
         physical_qubits: Sequence[int],
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         frequencies: Iterable[float],
         backend: Optional[Backend] = None,
         auto_update: bool = True,

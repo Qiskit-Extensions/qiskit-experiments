@@ -29,7 +29,7 @@ from qiskit.transpiler.passes import (
     SetLayout,
 )
 
-from qiskit_experiments.calibration_management.calibrations import Calibrations
+from qiskit_experiments.calibration_management.base_calibrations import BaseCalibrations
 from qiskit_experiments.calibration_management.update_library import BaseUpdater
 from qiskit_experiments.framework.base_analysis import BaseAnalysis
 from qiskit_experiments.framework.base_experiment import BaseExperiment
@@ -112,7 +112,7 @@ class BaseCalibrationExperiment(BaseExperiment, ABC):
     # pylint: disable=super-init-not-called
     def __init__(
         self,
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         *args,
         schedule_name: Optional[str] = None,
         cal_parameter_name: Optional[str] = None,
@@ -144,7 +144,7 @@ class BaseCalibrationExperiment(BaseExperiment, ABC):
         self.auto_update = auto_update
 
     @property
-    def calibrations(self) -> Calibrations:
+    def calibrations(self) -> BaseCalibrations:
         """Return the calibrations."""
         return self._cals
 

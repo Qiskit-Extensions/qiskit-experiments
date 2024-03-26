@@ -20,10 +20,8 @@ from qiskit.circuit import QuantumCircuit
 
 from qiskit_experiments.framework import ExperimentData
 from qiskit_experiments.calibration_management.update_library import BaseUpdater
-from qiskit_experiments.calibration_management import (
-    BaseCalibrationExperiment,
-    Calibrations,
-)
+from qiskit_experiments.calibration_management import BaseCalibrationExperiment
+from qiskit_experiments.calibration_management.base_calibrations import BaseCalibrations
 from qiskit_experiments.library.characterization.fine_frequency import FineFrequency
 
 
@@ -33,7 +31,7 @@ class FineFrequencyCal(BaseCalibrationExperiment, FineFrequency):
     def __init__(
         self,
         physical_qubits: Sequence[int],
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         backend: Optional[Backend] = None,
         cal_parameter_name: Optional[str] = "drive_freq",
         delay_duration: Optional[int] = None,

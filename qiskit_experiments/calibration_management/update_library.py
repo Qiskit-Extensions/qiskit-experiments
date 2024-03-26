@@ -20,7 +20,7 @@ from qiskit.circuit import Parameter
 from qiskit.pulse import ScheduleBlock
 
 from qiskit_experiments.framework.experiment_data import ExperimentData
-from qiskit_experiments.calibration_management.calibrations import Calibrations
+from qiskit_experiments.calibration_management.base_calibrations import BaseCalibrations
 from qiskit_experiments.calibration_management.parameter_value import ParameterValue
 from qiskit_experiments.calibration_management.calibration_key_types import ParameterValueType
 from qiskit_experiments.exceptions import CalibrationError
@@ -60,7 +60,7 @@ class BaseUpdater(ABC):
     @classmethod
     def add_parameter_value(
         cls,
-        cal: Calibrations,
+        cal: BaseCalibrations,
         exp_data: ExperimentData,
         value: ParameterValueType,
         param: Union[Parameter, str],
@@ -94,7 +94,7 @@ class BaseUpdater(ABC):
     @classmethod
     def update(
         cls,
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         exp_data: ExperimentData,
         parameter: str,
         schedule: Optional[Union[ScheduleBlock, str]],
@@ -146,7 +146,7 @@ class Frequency(BaseUpdater):
     @classmethod
     def update(
         cls,
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         exp_data: ExperimentData,
         result_index: Optional[int] = None,
         parameter: str = "drive_freq",

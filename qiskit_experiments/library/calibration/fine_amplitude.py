@@ -18,10 +18,8 @@ import numpy as np
 from qiskit.circuit import Gate, QuantumCircuit
 from qiskit.providers.backend import Backend
 
-from qiskit_experiments.calibration_management import (
-    BaseCalibrationExperiment,
-    Calibrations,
-)
+from qiskit_experiments.calibration_management import BaseCalibrationExperiment
+from qiskit_experiments.calibration_management.base_calibrations import BaseCalibrations
 from qiskit_experiments.library.characterization import FineAmplitude
 from qiskit_experiments.framework import ExperimentData, Options
 from qiskit_experiments.calibration_management.update_library import BaseUpdater
@@ -41,7 +39,7 @@ class FineAmplitudeCal(BaseCalibrationExperiment, FineAmplitude):
     def __init__(
         self,
         physical_qubits: Sequence[int],
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         schedule_name: str,
         backend: Optional[Backend] = None,
         cal_parameter_name: Optional[str] = "amp",
@@ -161,7 +159,7 @@ class FineXAmplitudeCal(FineAmplitudeCal):
     def __init__(
         self,
         physical_qubits: Sequence[int],
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         schedule_name: str,
         backend: Optional[Backend] = None,
         cal_parameter_name: Optional[str] = "amp",
@@ -209,7 +207,7 @@ class FineSXAmplitudeCal(FineAmplitudeCal):
     def __init__(
         self,
         physical_qubits: Sequence[int],
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         schedule_name: str,
         backend: Optional[Backend] = None,
         cal_parameter_name: Optional[str] = "amp",

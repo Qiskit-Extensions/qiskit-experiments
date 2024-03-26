@@ -19,10 +19,8 @@ from qiskit.providers.backend import Backend
 
 from qiskit_experiments.framework import ExperimentData
 from qiskit_experiments.exceptions import CalibrationError
-from qiskit_experiments.calibration_management import (
-    BaseCalibrationExperiment,
-    Calibrations,
-)
+from qiskit_experiments.calibration_management import BaseCalibrationExperiment
+from qiskit_experiments.calibration_management.base_calibrations import BaseCalibrations
 from qiskit_experiments.library.characterization import HalfAngle
 from qiskit_experiments.calibration_management.update_library import BaseUpdater
 
@@ -33,7 +31,7 @@ class HalfAngleCal(BaseCalibrationExperiment, HalfAngle):
     def __init__(
         self,
         physical_qubits: Sequence[int],
-        calibrations: Calibrations,
+        calibrations: BaseCalibrations,
         backend: Optional[Backend] = None,
         schedule_name: str = "sx",
         cal_parameter_name: Optional[str] = "angle",
@@ -98,7 +96,7 @@ class HalfAngleCal(BaseCalibrationExperiment, HalfAngle):
         )
 
     def _metadata(self) -> Dict[str, any]:
-        """Add metadata to the experiment data making it more self contained.
+        """Add metadata to the experiment data making it more self-contained.
 
         The following keys are added to the experiment's metadata:
             cal_param_value: The value of the pulse amplitude. This value together with
