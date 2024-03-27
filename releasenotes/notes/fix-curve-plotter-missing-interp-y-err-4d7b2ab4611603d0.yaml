@@ -1,0 +1,6 @@
+---
+fixes:
+  - |
+    Fixed a bug that crashes the curve analysis when the covariance matrix in 
+    the least square fit diverges. This bug is caused by lacking exception handling
+    in the :class:`.CurvePlotter`. See qiskit-experiments/#1413 for details.
