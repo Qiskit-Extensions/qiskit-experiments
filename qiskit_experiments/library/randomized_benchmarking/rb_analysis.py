@@ -324,6 +324,7 @@ def _lookup_epg_ratio(gate: str, n_qubits: int) -> Union[None, int]:
         "cy": 1.0,
         "cz": 1.0,
         "ch": 1.0,
+        "ecr": 1.0,
         "crx": 2.0,
         "cry": 2.0,
         "crz": 2.0,
