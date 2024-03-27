@@ -1,0 +1,5 @@
+---
+fixes:
+  - |
+    Fixed a bug where a copied :class:`.ExperimentData` instance's analysis results didn't get
+    new IDs and experiement ID.
