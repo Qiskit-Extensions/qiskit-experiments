@@ -15,6 +15,8 @@
 """Test ExperimentData."""
 from test.base import QiskitExperimentsTestCase
 from test.fake_experiment import FakeExperiment
+from test.extended_equality import is_equivalent
+
 import os
 from unittest import mock
 import copy
@@ -1058,11 +1060,24 @@ class TestDbExperimentData(QiskitExperimentsTestCase):
     def test_copy_metadata(self):
         """Test copy metadata."""
         exp_data = FakeExperiment(experiment_type="qiskit_test").run(backend=FakeBackend())
+        self.assertExperimentDone(exp_data)
         exp_data.add_data(self._get_job_result(1))
         copied = exp_data.copy(copy_results=False)
         self.assertEqual(exp_data.data(), copied.data())
         self.assertFalse(copied.analysis_results())
         self.assertEqual(exp_data.provider, copied.provider)
+
+    def test_copy_analysis_results(self):
+        """Test copy analysis results."""
+        exp_data = FakeExperiment(experiment_type="qiskit_test").run(backend=FakeBackend())
+        self.assertExperimentDone(exp_data)
+        exp_data.add_data(self._get_job_result(1))
+        copied = exp_data.copy(copy_results=True)
+        for res in copied.analysis_results():
+            self.assertEqual(res.experiment_id, copied.experiment_id)
+        # copied analysis results should be identical to the original except for experiment ID
+        copied._analysis_results._data["experiment_id"] = exp_data.experiment_id
+        self.assertTrue(is_equivalent(exp_data.analysis_results(), copied.analysis_results()))
 
     def test_copy_figure_artifacts(self):
         """Test copy expdata figures and artifacts."""
