@@ -1,0 +1,23 @@
+---
+features:
+  - |
+    Add a new experiment class :class:`.LayerFidelity`
+    to measure `layer fidelity <https://arxiv.org/abs/2311.05933>`_,
+    which is a holistic benchmark to characterize the full quality of the devices at scale.
+
+    It has an experimental feature: its :meth:`circuits`
+    exceptionally returns circuits on physical qubits (not virtual qubits as usual).
+    Its analysis class :class:`.LayerFidelityAnalysis` returns :class:`.AnalysisResultData`
+    which contains several ``extra`` entries to help additional analyses: e.g.
+    ``qubits`` to ease the query of subanalysis results and
+    ``reason`` to tell users why the ``quality`` of the analysis was ``"bad"``.
+
+    For example, the syntax for pulling out the individual fidelities looks like below.
+
+    .. code-block:: python
+    
+      df = exp_data.analysis_results(dataframe=True)
+      df[(df.name=="ProcessFidelity") & (df.qubits==(59, 60))].value
+
+    See `an example notebook
+    <https://gist.github.com/itoko/28c7cc117614c67e2a1899a3757d4ad1>`_ for more examples.
