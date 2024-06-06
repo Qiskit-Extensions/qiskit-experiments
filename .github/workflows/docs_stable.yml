@@ -30,7 +30,7 @@ jobs:
         run: touch docs/_build/html/.nojekyll
       - name: Set current version
         run: |
-          echo "version=$(git describe --abbrev=0 | cut -d'.' -f1,2)" >> "$GITHUB_ENV"
+          echo "version=$(cat qiskit_experiments/VERSION.txt | cut -d'.' -f1,2)" >> "$GITHUB_ENV"
       - name: Deploy stable
         uses: JamesIves/github-pages-deploy-action@v4
         with:
