@@ -12,9 +12,15 @@
 """
 Test integration of plotter.
 """
+from test.base import QiskitExperimentsTestCase
+from test.visualization.test_utils import LoggingTestCase
 
 from copy import deepcopy
-from test.base import QiskitExperimentsTestCase
+
+import numpy as np
+from uncertainties import ufloat
+from qiskit_experiments.framework import AnalysisResultData
+from qiskit_experiments.visualization import CurvePlotter, MplDrawer
 
 from .mock_drawer import MockDrawer
 from .mock_plotter import MockPlotter
@@ -85,3 +91,158 @@ class TestPlotter(QiskitExperimentsTestCase):
                 msg=f"Actual figure data value for {key} data-key is not as expected: {actual_value} "
                 f"(actual) vs {expected_value} (expected)",
             )
+
+
+class TestCurvePlotter(LoggingTestCase):
+    """Test case for Qiskit Experiments curve plotter based on logging."""
+
+    def test_all_data(self):
+        """Visualize all curve information."""
+        plotter = CurvePlotter(drawer=MplDrawer())
+        plotter.set_series_data(
+            series_name="test",
+            x=[0, 1],
+            y=[1, 1],
+            x_formatted=[2, 3],
+            y_formatted=[2, 2],
+            y_formatted_err=[0.1, 0.1],
+            x_interp=[4, 5],
+            y_interp=[3, 3],
+            y_interp_err=[0.2, 0.2],
+        )
+        self.assertDrawerAPICallEqual(
+            plotter,
+            expected=[
+                "Calling initialize_canvas",
+                "Calling scatter with x_data=[2, 3], y_data=[2, 2], x_err=None, y_err=[0.1, 0.1], "
+                "name='test', label=None, legend=True, options={'zorder': 2}",
+                "Calling scatter with x_data=[0, 1], y_data=[1, 1], x_err=None, y_err=None, "
+                "name='test', label=None, legend=False, options={'zorder': 1, 'color': 'gray'}",
+                "Calling line with x_data=[4, 5], y_data=[3, 3], "
+                "name='test', label=None, legend=False, options={'zorder': 3}",
+                "Calling filled_y_area with x_data=[4, 5], y_ub=[3.2, 3.2], y_lb=[2.8, 2.8], "
+                "name='test', label=None, legend=False, options={'alpha': 0.7, 'zorder': 5}",
+                "Calling filled_y_area with x_data=[4, 5], y_ub=[3.6, 3.6], y_lb=[2.4, 2.4], "
+                "name='test', label=None, legend=False, options={'alpha': 0.3, 'zorder': 5}",
+                "Calling format_canvas",
+            ],
+        )
+
+    def test_supplementary(self):
+        """Visualize with fitting report."""
+        test_result = AnalysisResultData(name="test", value=ufloat(1, 0.2))
+
+        plotter = CurvePlotter(drawer=MplDrawer())
+        plotter.set_series_data(
+            series_name="test",
+            x=[0, 1],
+            y=[1, 1],
+        )
+        plotter.set_supplementary_data(
+            fit_red_chi=3.0,
+            primary_results=[test_result],
+        )
+        # pylint: disable=anomalous-backslash-in-string
+        self.assertDrawerAPICallEqual(
+            plotter,
+            expected=[
+                "Calling initialize_canvas",
+                "Calling scatter with x_data=[0, 1], y_data=[1, 1], x_err=None, y_err=None, "
+                "name='test', label=None, legend=True, options={'zorder': 1}",
+                "Calling textbox with description='test =   1 ±  0.2\n"
+                "reduced-$\chi^2$ =  3', rel_pos=None, options={}",
+                "Calling format_canvas",
+            ],
+        )
+
+    def test_fit_y_error_missing(self):
+        """Visualize curve that fitting doesn't work well, i.e. cov-matrix diverges."""
+        plotter = CurvePlotter(drawer=MplDrawer())
+        plotter.set_series_data(
+            series_name="test",
+            x=[0, 1],
+            y=[1, 1],
+            x_formatted=[2, 3],
+            y_formatted=[2, 2],
+            y_formatted_err=[0.1, 0.1],
+            x_interp=[4, 5],
+            y_interp=[3, 3],  # y_interp_err is gone
+        )
+        self.assertDrawerAPICallEqual(
+            plotter,
+            expected=[
+                "Calling initialize_canvas",
+                "Calling scatter with x_data=[2, 3], y_data=[2, 2], x_err=None, y_err=[0.1, 0.1], "
+                "name='test', label=None, legend=True, options={'zorder': 2}",
+                "Calling scatter with x_data=[0, 1], y_data=[1, 1], x_err=None, y_err=None, "
+                "name='test', label=None, legend=False, options={'zorder': 1, 'color': 'gray'}",
+                "Calling line with x_data=[4, 5], y_data=[3, 3], "
+                "name='test', label=None, legend=False, options={'zorder': 3}",
+                "Calling format_canvas",
+            ],
+        )
+
+    def test_fit_fails(self):
+        """Visualize curve only contains formatted data, i.e. fit completely fails."""
+        plotter = CurvePlotter(drawer=MplDrawer())
+        plotter.set_series_data(
+            series_name="test",
+            x_formatted=[2, 3],
+            y_formatted=[2, 2],
+            y_formatted_err=[0.1, 0.1],
+        )
+        self.assertDrawerAPICallEqual(
+            plotter,
+            expected=[
+                "Calling initialize_canvas",
+                "Calling scatter with x_data=[2, 3], y_data=[2, 2], x_err=None, y_err=[0.1, 0.1], "
+                "name='test', label=None, legend=True, options={'zorder': 2}",
+                "Calling format_canvas",
+            ],
+        )
+
+    def test_two_series(self):
+        """Visualize curve with two series."""
+        plotter = CurvePlotter(drawer=MplDrawer())
+        plotter.set_series_data(
+            series_name="test1",
+            x_formatted=[2, 3],
+            y_formatted=[2, 2],
+            y_formatted_err=[0.1, 0.1],
+        )
+        plotter.set_series_data(
+            series_name="test2",
+            x_formatted=[2, 3],
+            y_formatted=[4, 4],
+            y_formatted_err=[0.2, 0.2],
+        )
+        self.assertDrawerAPICallEqual(
+            plotter,
+            expected=[
+                "Calling initialize_canvas",
+                "Calling scatter with x_data=[2, 3], y_data=[2, 2], x_err=None, y_err=[0.1, 0.1], "
+                "name='test1', label=None, legend=True, options={'zorder': 2}",
+                "Calling scatter with x_data=[2, 3], y_data=[4, 4], x_err=None, y_err=[0.2, 0.2], "
+                "name='test2', label=None, legend=True, options={'zorder': 2}",
+                "Calling format_canvas",
+            ],
+        )
+
+    def test_scatter_partly_missing(self):
+        """Visualize curve include some defect."""
+        plotter = CurvePlotter(drawer=MplDrawer())
+        plotter.set_series_data(
+            series_name="test",
+            x_formatted=[2, 3],
+            y_formatted=[np.nan, 2],
+            y_formatted_err=[np.nan, 0.1],
+        )
+        self.assertDrawerAPICallEqual(
+            plotter,
+            expected=[
+                "Calling initialize_canvas",
+                "Calling scatter with x_data=[2, 3], y_data=[nan, 2], x_err=None, y_err=[nan, 0.1], "
+                "name='test', label=None, legend=True, options={'zorder': 2}",
+                "Calling format_canvas",
+            ],
+        )

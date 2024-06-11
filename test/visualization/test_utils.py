@@ -12,8 +12,12 @@
 """
 Test visualization utilities.
 """
+from __future__ import annotations
 
 import itertools as it
+import logging
+import inspect
+
 from test.base import QiskitExperimentsTestCase
 from typing import List, Tuple
 
@@ -21,6 +25,7 @@ import numpy as np
 from ddt import data, ddt
 from qiskit.exceptions import QiskitError
 
+from qiskit_experiments.visualization import BasePlotter, BaseDrawer
 from qiskit_experiments.visualization.utils import DataExtentCalculator
 from qiskit_experiments.framework.package_deps import version_is_at_least
 
@@ -119,3 +124,80 @@ class TestDataExtentCalculator(QiskitExperimentsTestCase):
         ext_calc = DataExtentCalculator()
         with self.assertRaises(QiskitError):
             ext_calc.extent()
+
+
+class LoggingTestCase(QiskitExperimentsTestCase):
+    """Experiments visualization test case for integration test.
+
+    This test case provides a test function assertDrawerAPICallEqual that embeds
+    a local logger to record internal drawer API calls,
+    instead of validating the plotter by actually comparing the generated image file.
+    """
+
+    class LoggingWrapper:
+        """Internal drawer wrapper for logging API call."""
+
+        def __init__(
+            self,
+            target: BaseDrawer,
+            to_record: list[str],
+        ):
+            self._target = target
+            self._to_record = to_record
+            self._logger = logging.getLogger("LocalLogger")
+
+        def __getattr__(self, name):
+            method = getattr(self._target, name)
+            if name in self._to_record:
+                return self._record_call(method)
+            return method
+
+        def _record_call(self, method):
+            """A drawer's method wrapper to record the call details."""
+            signature = inspect.signature(method)
+
+            def _format_arg(key_value_tuple):
+                key, value = key_value_tuple
+                # to make uniform representation for the ease of unittest
+                if isinstance(value, (tuple, np.ndarray)):
+                    return f"{key}={list(value)}"
+                if isinstance(value, str):
+                    return f"{key}='{value}'"
+                return f"{key}={value}"
+
+            def _wrapped(*args, **kwargs):
+                full_args = signature.bind(*args, **kwargs)
+                full_args.apply_defaults()
+                msg = f"Calling {method.__name__}"
+                if log_kwargs := ", ".join(map(_format_arg, full_args.arguments.items())):
+                    msg += f" with {log_kwargs}"
+                self._logger.info(msg)
+                return method(*args, **kwargs)
+
+            return _wrapped
+
+    def assertDrawerAPICallEqual(
+        self,
+        plotter: BasePlotter,
+        expected: list[str],
+    ):
+        """Test if drawer APIs are called with expected arguments via the plotter.figure() call."""
+        plotter.drawer = LoggingTestCase.LoggingWrapper(
+            plotter.drawer,
+            [
+                "line",
+                "scatter",
+                "hline",
+                "filled_y_area",
+                "filled_x_area",
+                "textbox",
+                "image",
+                "initialize_canvas",
+                "format_canvas",
+            ],
+        )
+        logger = "LocalLogger"
+        with self.assertLogs(logger, level="INFO") as cm:
+            plotter.figure()
+
+        self.assertListEqual([record.message for record in cm.records], expected)

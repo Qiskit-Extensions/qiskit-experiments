@@ -12,11 +12,11 @@
 """Plotter for curve fits, specifically from :class:`.CurveAnalysis`."""
 from typing import List
 
+import numpy as np
 from uncertainties import UFloat
 
 from qiskit_experiments.curve_analysis.utils import analysis_result_to_repr
 from qiskit_experiments.framework import Options
-
 from .base_plotter import BasePlotter
 
 
@@ -123,49 +123,44 @@ class CurvePlotter(BasePlotter):
             plotted_formatted_data = False
             if self.data_exists_for(ser, ["x_formatted", "y_formatted", "y_formatted_err"]):
                 x, y, yerr = self.data_for(ser, ["x_formatted", "y_formatted", "y_formatted_err"])
-                self.drawer.scatter(x, y, y_err=yerr, name=ser, zorder=2, legend=True)
-                plotted_formatted_data = True
+                if x is not None and y is not None:
+                    self.drawer.scatter(x, y, y_err=yerr, name=ser, zorder=2, legend=True)
+                    plotted_formatted_data = True
 
             # Scatter plot
             if self.data_exists_for(ser, ["x", "y"]):
                 x, y = self.data_for(ser, ["x", "y"])
-                options = {
-                    "zorder": 1,
-                }
-                # If we plotted formatted data, differentiate scatter points by setting normal X-Y
-                # markers to gray.
-                if plotted_formatted_data:
-                    options["color"] = "gray"
-                # If we didn't plot formatted data, the X-Y markers should be used for the legend. We add
-                # it to ``options`` so it's easier to pass to ``scatter``.
-                if not plotted_formatted_data:
-                    options["legend"] = True
-                self.drawer.scatter(
-                    x,
-                    y,
-                    name=ser,
-                    **options,
-                )
+                if x is not None and y is not None:
+                    options = {
+                        "zorder": 1,
+                    }
+                    # If we plotted formatted data, differentiate scatter points
+                    # by setting normal X-Y markers to gray.
+                    if plotted_formatted_data:
+                        options["color"] = "gray"
+                    # If we didn't plot formatted data, the X-Y markers should be used for the legend.
+                    # We add it to ``options`` so it's easier to pass to ``scatter``.
+                    if not plotted_formatted_data:
+                        options["legend"] = True
+                    self.drawer.scatter(x, y, name=ser, **options)
 
-            # Line plot for fit
+            # Line and confidence interval plot for fit
             if self.data_exists_for(ser, ["x_interp", "y_interp"]):
                 x, y = self.data_for(ser, ["x_interp", "y_interp"])
-                self.drawer.line(x, y, name=ser, zorder=3)
-
-            # Confidence interval plot
-            if self.data_exists_for(ser, ["x_interp", "y_interp", "y_interp_err"]):
-                x, y_interp, y_interp_err = self.data_for(
-                    ser, ["x_interp", "y_interp", "y_interp_err"]
-                )
-                for n_sigma, alpha in self.options.plot_sigma:
-                    self.drawer.filled_y_area(
-                        x,
-                        y_interp + n_sigma * y_interp_err,
-                        y_interp - n_sigma * y_interp_err,
-                        name=ser,
-                        alpha=alpha,
-                        zorder=5,
-                    )
+                if x is not None and y is not None:
+                    self.drawer.line(x, y, name=ser, zorder=3)
+                    if self.data_exists_for(ser, ["y_interp_err"]):
+                        if (y_err := self.data_for(ser, ["y_interp_err"])[0]) is not None:
+                            y_err = np.array(y_err, dtype=float)
+                            for n_sigma, alpha in self.options.plot_sigma:
+                                self.drawer.filled_y_area(
+                                    x,
+                                    y + n_sigma * y_err,
+                                    y - n_sigma * y_err,
+                                    name=ser,
+                                    alpha=alpha,
+                                    zorder=5,
+                                )
 
             # Plot residuals
             if self.data_exists_for(ser, ["x_residuals", "y_residuals"]):
