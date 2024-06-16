@@ -18,10 +18,8 @@ from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
 from qiskit.pulse import Play, Constant, DriveChannel, ScheduleBlock
 
-from qiskit_experiments.calibration_management.base_calibration_experiment import (
-    BaseCalibrationExperiment,
-    Calibrations,
-)
+from qiskit_experiments.calibration_management import BaseCalibrationExperiment
+from qiskit_experiments.calibration_management import Calibrations
 from qiskit_experiments.framework.composite import ParallelExperiment, BatchExperiment
 from qiskit_experiments.library import QubitSpectroscopy
 from qiskit_experiments.test.fake_backend import FakeBackend
