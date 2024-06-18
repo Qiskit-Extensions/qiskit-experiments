@@ -204,16 +204,26 @@ class AnalysisResultTable:
         with self._lock:
             self._data = pd.DataFrame(columns=self.DEFAULT_COLUMNS)
 
-    def copy(self):
+    def copy(self, new_ids: bool = True):
         """Create new thread-safe instance with the same data.
 
-        .. note::
-            This returns a new object with shallow copied data frame.
+        Args:
+            new_ids: Whether to generate new IDs for copied entries. Defaults to True.
+
+        Returns:
+            A new shallow copied DataFrame object.
         """
         with self._lock:
             # Hold the lock so that no data can be added
             new_instance = self.__class__()
             new_instance._data = self._data.copy(deep=False)
+            if new_ids:
+                new_instance._data["result_id"] = None
+                for idx, _ in new_instance._data.iterrows():
+                    new_instance._data.at[idx, "result_id"] = new_instance._create_unique_hash()
+                new_instance._data.index = [
+                    result_id[:8] for result_id in new_instance._data["result_id"]
+                ]
         return new_instance
 
     def _create_unique_hash(self) -> str:

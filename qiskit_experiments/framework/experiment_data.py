@@ -2397,7 +2397,10 @@ class ExperimentData:
         # Copy results and figures.
         # This requires analysis callbacks to finish
         self._wait_for_futures(self._analysis_futures.values(), name="analysis")
-        new_instance._analysis_results = self._analysis_results.copy()
+        copied_results = self._analysis_results.copy()
+        # Analysis results should have experiment ID of the copied experiment
+        copied_results._data["experiment_id"] = new_instance.experiment_id
+        new_instance._analysis_results = copied_results
         with self._figures.lock:
             new_instance._figures = ThreadSafeOrderedDict()
             new_instance.add_figures(self._figures.values())
