@@ -22,7 +22,12 @@ import ddt
 from qiskit import QuantumCircuit
 from qiskit.providers.jobstatus import JobStatus
 from qiskit.exceptions import QiskitError
+from qiskit.qobj.utils import MeasLevel
+from qiskit.result import Result
+
+
 from qiskit_ibm_runtime.fake_provider import FakeVigoV2
+import qiskit_experiments.data_processing as dp
 
 from qiskit_experiments.database_service import Qubit
 from qiskit_experiments.exceptions import AnalysisError
@@ -33,6 +38,8 @@ from qiskit_experiments.framework import (
     BaseAnalysis,
     AnalysisResultData,
     AnalysisStatus,
+    RestlessMixin,
+    Options,
 )
 from qiskit_experiments.test.fake_backend import FakeBackend
 from qiskit_experiments.test.utils import FakeJob
@@ -426,3 +433,79 @@ class TestFramework(QiskitExperimentsTestCase):
         self.assertEqual(exp2.experiment_type, "MyExp")
         exp2.experiment_type = "suieee"
         self.assertEqual(exp2.experiment_type, "suieee")
+
+    def test_restless_experiment_options(self):
+        """Test override of experiment option in restless experiment."""
+        # pylint: disable-next=redefined-outer-name, reimported
+        from qiskit_experiments.test.utils import FakeJob
+        import uuid
+
+        class FakeRestlessBackend(FakeVigoV2):
+            """Fake backend for restless experiment"""
+
+            def run(self, run_input, **options):
+                result = {
+                    "backend_name": "fake_backend",
+                    "backend_version": "0",
+                    "qobj_id": uuid.uuid4().hex,
+                    "job_id": uuid.uuid4().hex,
+                    "success": True,
+                    "results": [],
+                }
+                return FakeJob(backend=self, result=Result.from_dict(result))
+
+        class FakeRestlessAnalysis(FakeAnalysis):
+            """Fake analysis class for fake restless experiment. We need this for the data processor."""
+
+            @classmethod
+            def _default_options(cls) -> Options:
+                """Default analysis options."""
+                options = super()._default_options()
+
+                options.update_options(
+                    data_processor=dp.DataProcessor("counts", [dp.Probability("1")]),
+                    stark_coefficients="latest",
+                    x_key="xval",
+                )
+                return options
+
+        class FakeRestlessExperiment(RestlessMixin, FakeExperiment):
+            """Fake restless experiment for testing."""
+
+            def __init__(
+                self, physical_qubits=None, backend=None, experiment_type="FakeRestlessExperiment"
+            ):
+                """Initialise the fake experiment."""
+                if physical_qubits is None:
+                    physical_qubits = [0]
+                super().__init__(
+                    physical_qubits,
+                    analysis=FakeRestlessAnalysis(),
+                    backend=backend,
+                    experiment_type=experiment_type,
+                )
+
+            @classmethod
+            def _default_run_options(cls) -> Options:
+                """Default option values for the experiment :meth:`run` method."""
+                options = super()._default_run_options()
+
+                options.meas_level = MeasLevel.KERNELED
+                options.meas_return = "single"
+
+                return options
+
+        backend = FakeRestlessBackend()
+        exp = FakeRestlessExperiment(backend=backend)
+
+        exp.enable_restless(
+            override_processor_by_restless=False, rep_delay=250, suppress_t1_error=True
+        )
+        exp.run_options.meas_level = MeasLevel.CLASSIFIED
+        self.assertNotEqual(exp.run_options.get("meas_level"), MeasLevel.KERNELED)
+
+        # `run()` method makes a copy of the experiment if run option is passed through it, and we cannot
+        # access it for testing.
+        # pylint: disable-next=unused-variable
+        expdata = exp.run()
+        self.assertEqual(exp.run_options.get("meas_level"), MeasLevel.KERNELED)

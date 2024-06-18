@@ -1,0 +1,7 @@
+---
+features:
+  - |
+    `RestlessMixin` class will now override the experiment run option at `_finilize()` method.
+    `RestlessMixin` class should be the first base class that an experiment inherits from for correct
+    MRO (Method Resolution Order). To cancel this override, set `restless` to False in the experiment
+    options.

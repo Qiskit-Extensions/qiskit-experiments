@@ -52,7 +52,8 @@ In Qiskit Experiments, the experiments that support restless measurements
 have a special method :meth:`~.RestlessMixin.enable_restless` to set the restless run options
 and define the data processor that will process the measured data.
 If you are an experiment developer, you can add the :class:`.RestlessMixin`
-to your experiment class to add support for restless measurements.
+to your experiment class to add support for restless measurements. For correct method resolution order,
+:class:`.RestlessMixin` should be the first base class your class will inherit from.
 Here, we will show how to activate restless measurements using
 a fake backend and a rough DRAG experiment. Note however, that you will not
 observe any meaningful outcomes with fake backends since the circuit simulator
@@ -89,9 +90,11 @@ they use always starts with the qubits in the ground state.
 
 As you can see, a restless data processor is automatically chosen for the experiment. This
 data processor post-processes the restless measured shots according to the order in which
-they were acquired. Furthermore, the appropriate run options are also set. Note that
-these run options might be unique to IBM Quantum providers. Therefore, execute may fail
-on non-IBM Quantum providers if the required options are not supported.
+tthey were acquired. Furthermore, the appropriate run options are also set. Those run options would also
+override new run options that will be set afterward. To disable this override, one should set the
+option `restless` to `False`. Note that these run options might be unique to IBM Quantum providers.
+Therefore, execute may fail on non-IBM Quantum providers if the required options are not supported.
+
 
 After calling :meth:`~.RestlessMixin.enable_restless` the experiment is ready to be run
 in a restless mode. With a hardware backend, this would be done by calling the

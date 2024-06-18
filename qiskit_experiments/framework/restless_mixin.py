@@ -34,8 +34,10 @@ class RestlessMixin:
     This class defines the following methods:
 
     - :meth:`~.RestlessMixin.enable_restless`
+    - :meth:`~.RestlessMixin._enable_restless`
     - :meth:`~.RestlessMixin._get_restless_processor`
     - :meth:`~.RestlessMixin._t1_check`
+    - :meth:`~.RestlessMixin._finalize`
 
     A restless enabled experiment is an experiment that can be run in a restless
     measurement setting. In restless measurements, the qubit is not reset after
@@ -61,10 +63,18 @@ class RestlessMixin:
 
     analysis: BaseAnalysis
     _default_run_options: Options()
+    run_options: Options()
     set_run_options: Callable
     _backend: Backend
     _physical_qubits: Sequence[int]
     _num_qubits: int
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # self._enable_restless = False
+        self.rep_delay = None
+        self.override_processor_by_restless = None
+        self.suppress_t1_error = None
 
     def enable_restless(
         self,
@@ -72,8 +82,9 @@ class RestlessMixin:
         override_processor_by_restless: bool = True,
         suppress_t1_error: bool = False,
     ):
-        """Enables a restless experiment by setting the restless run options and the
-        restless data processor.
+        """
+        Set a flag to enable restless configuration when running the experiment. If the flag is set to
+        `True`, the program will run `_enable_restless` method in the `_finilized` step.
 
         Args:
             rep_delay: The repetition delay. This is the delay between a measurement
@@ -88,6 +99,26 @@ class RestlessMixin:
                 ``rep_delay`` is larger than the T1 times of the qubits. Instead, a warning will
                 be logged as restless measurements may have a large amount of noise.
 
+        """
+
+        self.set_run_options(restless=True)
+        if rep_delay:
+            self.rep_delay = rep_delay
+        if override_processor_by_restless:
+            self.override_processor_by_restless = override_processor_by_restless
+        if suppress_t1_error:
+            self.suppress_t1_error = suppress_t1_error
+
+        # Calling `_enable_restless()` so the run option will be visible to the user.
+        self._enable_restless()
+        # Setting override_processor_by_restless to false because
+        # the data processor was already configured.
+        self.override_processor_by_restless = False
+
+    def _enable_restless(self):
+        """Enables a restless experiment by setting the restless run options and the
+        restless data processor.
+
         Raises:
             DataProcessorError: If the attribute rep_delay_range is not defined for the backend.
             DataProcessorError: If a data processor has already been set but
@@ -98,10 +129,11 @@ class RestlessMixin:
                 T1 time of one of the physical qubits in the experiment and the flag
                 ``ignore_t1_check`` is False.
         """
+        LOG.debug("Enabling restless configuration. This will override current configuration.")
         try:
-            if not rep_delay:
+            if not self.rep_delay:
                 # BackendV1 only; BackendV2 does not support this
-                rep_delay = self._backend.configuration().rep_delay_range[0]
+                self.rep_delay = self._backend.configuration().rep_delay_range[0]
         except AttributeError as error:
             raise DataProcessorError(
                 "The restless experiment can not be enabled because "
@@ -110,15 +142,15 @@ class RestlessMixin:
             ) from error
 
         # Check the rep_delay compared to the T1 time.
-        if not self._t1_check(rep_delay):
+        if not self._t1_check():
             msg = (
-                f"The specified repetition delay {rep_delay} is equal to or greater "
+                f"The specified repetition delay {self.rep_delay} is equal to or greater "
                 f"than the T1 time of one of the physical qubits"
                 f"{self._physical_qubits} in the experiment. Consider choosing "
                 f"a smaller repetition delay for the restless experiment."
             )
 
-            if suppress_t1_error:
+            if self.suppress_t1_error:
                 LOG.warning(msg)
             else:
                 raise DataProcessorError(msg)
@@ -129,7 +161,7 @@ class RestlessMixin:
         meas_return = self._default_run_options().get("meas_return", MeasReturnType.SINGLE)
         if not self.analysis.options.get("data_processor", None):
             self.set_run_options(
-                rep_delay=rep_delay,
+                rep_delay=self.rep_delay,
                 init_qubits=False,
                 memory=True,
                 meas_level=meas_level,
@@ -146,9 +178,9 @@ class RestlessMixin:
                     "does not have the data_processor option."
                 )
         else:
-            if not override_processor_by_restless:
+            if not self.override_processor_by_restless:
                 self.set_run_options(
-                    rep_delay=rep_delay,
+                    rep_delay=self.rep_delay,
                     init_qubits=False,
                     memory=True,
                     meas_level=meas_level,
@@ -188,12 +220,8 @@ class RestlessMixin:
                 ],
             )
 
-    def _t1_check(self, rep_delay: float) -> bool:
+    def _t1_check(self) -> bool:
         """Check that repetition delay < T1 of the physical qubits in the experiment.
-
-        Args:
-            rep_delay: The repetition delay. This is the delay between a measurement
-                    and the subsequent quantum circuit.
 
         Returns:
             True if the repetition delay is smaller than the qubit T1 times.
@@ -209,7 +237,7 @@ class RestlessMixin:
                 for physical_qubit in self._physical_qubits
             ]
 
-            if all(rep_delay / t1_value < 1.0 for t1_value in t1_values):
+            if all(self.rep_delay / t1_value < 1.0 for t1_value in t1_values):
                 return True
         except AttributeError as error:
             raise DataProcessorError(
@@ -218,3 +246,9 @@ class RestlessMixin:
             ) from error
 
         return False
+
+    def _finalize(self):
+        # Calling again to self._enable_restless() to override experiment option for restless experiment.
+        if self.run_options.get("restless", None):
+            self._enable_restless()
+        super()._finalize()
