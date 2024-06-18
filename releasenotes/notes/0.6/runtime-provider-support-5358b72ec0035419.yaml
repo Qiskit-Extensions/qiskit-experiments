@@ -5,8 +5,8 @@ features_expdata:
     to and loaded from the cloud service.
 upgrade_package:
   - |
-    With the impending deprecation of the :external+qiskit_ibm_provider:doc:`qiskit-ibm-provider <index>` package, support for
-    :external+qiskit_ibm_provider:doc:`qiskit-ibm-provider <index>` is now deprecated and will be removed
+    With the impending deprecation of the ``qiskit-ibm-provider`` package, support for
+    ``qiskit-ibm-provider`` is now deprecated and will be removed
     in the next release. Users should migrate to :external+qiskit_ibm_runtime:doc:`qiskit-ibm-runtime <index>` following the
     `runtime migration guide
     <https://docs.quantum.ibm.com/api/migration-guides/qiskit-runtime-from-provider>`_.

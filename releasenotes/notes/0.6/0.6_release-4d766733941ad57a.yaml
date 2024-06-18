@@ -10,7 +10,7 @@ prelude: >
     :class:`.StarkRamseyXYAmpScan`. :class:`.StandardRB` and :class:`.InterleavedRB` were
     significantly improved. The supported provider for running jobs on IBM backends is now
     :external+qiskit_ibm_runtime:doc:`qiskit-ibm-runtime <index>`. Using 
-    :external+qiskit_ibm_provider:doc:`qiskit-ibm-provider <index>` is still supported
+    ``qiskit-ibm-provider`` is still supported
     but its use is deprecated.
 features:
   - |

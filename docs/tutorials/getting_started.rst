@@ -306,7 +306,7 @@ supports can be set:
 
 Consult the documentation of the run method of your
 specific backend type for valid options.
-For example, see :meth:`qiskit_ibm_provider.IBMBackend.run` for IBM backends.
+For example, see :meth:`qiskit_ibm_runtime.IBMBackend.run` for IBM backends.
 
 Transpile options
 -----------------

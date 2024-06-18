@@ -19,7 +19,7 @@ Saving
 
 .. note::
     This guide requires :external+qiskit_ibm_runtime:doc:`qiskit-ibm-runtime <index>` version 0.15 and up, which can be installed with ``python -m pip install qiskit-ibm-runtime``.
-    For how to migrate from the older :external+qiskit_ibm_provider:doc:`qiskit-ibm-provider <index>` to :external+qiskit_ibm_runtime:doc:`qiskit-ibm-runtime <index>`,
+    For how to migrate from the older ``qiskit-ibm-provider`` to :external+qiskit_ibm_runtime:doc:`qiskit-ibm-runtime <index>`,
     consult the `migration guide <https://docs.quantum.ibm.com/api/migration-guides/qiskit-runtime-from-provider>`_.\
 
 You must run the experiment on a real IBM
