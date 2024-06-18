@@ -353,7 +353,7 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
         """
         samples = []
 
-        for model_name, sub_data in list(curve_data.groupby("model_name")):
+        for model_name, sub_data in list(curve_data.dataframe.groupby("model_name")):
             raw_datum = AnalysisResultData(
                 name=DATA_ENTRY_PREFIX + self.__class__.__name__,
                 value={
