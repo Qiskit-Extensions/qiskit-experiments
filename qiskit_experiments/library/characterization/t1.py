@@ -98,7 +98,7 @@ class T1(BaseExperiment):
         # Set experiment options
         self.set_experiment_options(delays=delays)
 
-    def circuits(self) -> List[QuantumCircuit]:
+    def circuits(self, qnum=0) -> List[QuantumCircuit]:
         """
         Return a list of experiment circuits
 
@@ -109,18 +109,33 @@ class T1(BaseExperiment):
 
         circuits = []
         for delay in self.experiment_options.delays:
-            circ = QuantumCircuit(1, 1)
-            circ.x(0)
-            circ.barrier(0)
-            circ.delay(timing.round_delay(time=delay), 0, timing.delay_unit)
-            circ.barrier(0)
-            circ.measure(0, 0)
+            circ = QuantumCircuit(qnum+1, 1)
+            circ.x(qnum)
+            circ.barrier(qnum)
+            circ.delay(timing.round_delay(time=delay), qnum, timing.delay_unit)
+            circ.barrier(qnum)
+            circ.measure(qnum, 0)
 
             circ.metadata = {"xval": timing.delay_time(time=delay)}
 
             circuits.append(circ)
 
         return circuits
+    
+    def _transpiled_circuits(self) -> List[QuantumCircuit]:
+        """Return a list of experiment circuits, transpiled.
+
+        Override to skip transpilaion if not needed
+        """
+        if self._backend:
+            #get basis gates
+            basis_gates = self._backend.configuration().basis_gates
+            
+            if 'x' in basis_gates:
+                return self.circuits(self.physical_qubits[0])
+            
+        return super()._transpiled_circuits()
+
 
     def _metadata(self):
         metadata = super()._metadata()
