@@ -138,12 +138,15 @@ class CompositeAnalysis(BaseAnalysis):
             # Since copy for replace result is handled at the parent level
             # we always run with replace result on component analysis
             self._analyses[i].run(sub_expdata, replace_results=True)
-
-        # Analysis is running in parallel so we add loop to wait
-        # for all component analysis to finish before returning
-        # the parent experiment analysis results
-        for sub_expdata in component_expdata:
+            # Block for results to avoid issues nested CompositeAnalysis runs.
+            # Ideally this constraint will be removed in the future.
+            # Previously run() was called on all components and then
+            # block_for_results() was called on all of them, but since only one
+            # thread can execute Python code at a time there is not much
+            # difference in performance. Blocking separately limits the number
+            # of threads that are started simultaneously.
             sub_expdata.block_for_results()
+
         # Optionally flatten results from all component experiments
         # for adding to the main experiment data container
         if self._flatten_results:
