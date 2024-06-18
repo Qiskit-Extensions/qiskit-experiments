@@ -273,14 +273,14 @@ class TestT1(QiskitExperimentsTestCase):
             self.assertEqual(circ.num_qubits, 2)
             op_counts = circ.count_ops()
             self.assertEqual(op_counts.get("rx"), 2)
-            self.assertEqual(op_counts.get("delay"), 2)
+            self.assertEqual(op_counts.get("delay"), 3)
 
         tcircs = parexp._transpiled_circuits()
         for circ in tcircs:
             self.assertEqual(circ.num_qubits, num_qubits)
             op_counts = circ.count_ops()
             self.assertEqual(op_counts.get("rx"), 2)
-            self.assertEqual(op_counts.get("delay"), 2)
+            self.assertEqual(op_counts.get("delay"), 3)
 
     def test_experiment_config(self):
         """Test converting to and from config works"""

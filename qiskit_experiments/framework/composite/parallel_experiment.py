@@ -16,7 +16,7 @@ from typing import List, Optional
 import numpy as np
 
 from qiskit import QuantumCircuit, ClassicalRegister
-from qiskit.circuit import Clbit
+from qiskit.circuit import Clbit, Delay
 from qiskit.providers.backend import Backend
 from qiskit_experiments.exceptions import QiskitError
 from .composite_experiment import CompositeExperiment, BaseExperiment
@@ -98,12 +98,39 @@ class ParallelExperiment(CompositeExperiment):
             else:
                 num_qubits = 1 + max(self.physical_qubits)
 
-        joint_circuits = []
-        sub_qubits = 0
+        # Transpile component circuits
+        transpiled_circuits = []
+
+        # Max duration for all components that will be combined into a single circuit
+        max_durations = {}
+        duration_unit = None
+        scheduling_method = getattr(self.transpile_options, "scheduling_method", None)
+
+        # Find max durations of subcircuits
         for exp_idx, sub_exp in enumerate(self._experiments):
             # Generate transpiled subcircuits
             sub_circuits = sub_exp._transpiled_circuits()
+            transpiled_circuits.append(sub_circuits)
+            if scheduling_method is not None:
+                for circ_idx, sub_circ in enumerate(sub_circuits):
+                    if sub_circ.duration is not None:
+                        if duration_unit is None:
+                            duration_unit = sub_circ.unit
+                        if circ_idx not in max_durations:
+                            max_durations[circ_idx] = 0
+                        max_durations[circ_idx] = max(sub_circ.duration, max_durations[circ_idx])
+                        if duration_unit != sub_circ.unit:
+                            raise QiskitError(
+                                "Scheduled component experiments are scheduled with"
+                                " different time units."
+                            )
 
+        # Combine circuits
+        joint_circuits = []
+        sub_qubits = 0
+        for exp_idx, (sub_circuits, sub_exp) in enumerate(
+            zip(transpiled_circuits, self._experiments)
+        ):
             # Qubit remapping for non-transpiled circuits
             if not device_layout:
                 qubits = list(range(sub_qubits, sub_qubits + sub_exp.num_qubits))
@@ -142,6 +169,18 @@ class ParallelExperiment(CompositeExperiment):
                 # Apply transpiled subcircuit
                 # Note that this assumes the circuit was not expanded to use
                 # any qubits outside the specified physical qubits
+                circ_duration = max_durations.get(circ_idx)
+                pad_time = None
+                if scheduling_method and sub_circ.duration and circ_duration:
+                    pad_time = abs(circ_duration - sub_circ.duration)
+
+                # If scheduling method is alap prepend shorter sub-circuits with delays
+                if scheduling_method == "alap" and pad_time:
+                    for i in sub_exp.physical_qubits:
+                        circuit._append(
+                            Delay(pad_time, unit=duration_unit), [circuit.qubits[i]], []
+                        )
+
                 for inst, qargs, cargs in sub_circ.data:
                     mapped_cargs = [sub_cargs[sub_circ.find_bit(i).index] for i in cargs]
                     try:
@@ -163,6 +202,18 @@ class ParallelExperiment(CompositeExperiment):
                             "experiment is valid on the backends coupling map."
                         ) from ex
                     circuit._append(inst, mapped_qargs, mapped_cargs)
+
+                # If scheduling method is alap append shorter sub-circuits with delays
+                if scheduling_method == "asap" and pad_time:
+                    for i in sub_exp.physical_qubits:
+                        circuit._append(
+                            Delay(pad_time, unit=duration_unit), [circuit.qubits[i]], []
+                        )
+
+                # Update duration of circuit
+                if scheduling_method and circ_duration:
+                    circuit.duration = circ_duration
+                    circuit.unit = duration_unit
 
                 # Add subcircuit metadata
                 circuit.metadata["composite_index"].append(exp_idx)
