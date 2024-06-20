@@ -17,7 +17,7 @@ import copy
 
 from qiskit import pulse, transpile
 from qiskit.pulse import InstructionScheduleMap
-from qiskit_ibm_runtime.fake_provider import FakeAthens
+from qiskit_ibm_runtime.fake_provider import FakeAthensV2
 
 from qiskit_experiments.test.mock_iq_backend import MockIQBackend
 from qiskit_experiments.test.mock_iq_helpers import MockIQHalfAngleHelper as HalfAngleHelper
@@ -58,7 +58,7 @@ class TestHalfAngle(QiskitExperimentsTestCase):
         # mimic what will happen in the experiment.
         transpile_opts = copy.copy(hac.transpile_options.__dict__)
         transpile_opts["initial_layout"] = list(hac._physical_qubits)
-        circuits = transpile(hac.circuits(), FakeAthens(), **transpile_opts)
+        circuits = transpile(hac.circuits(), FakeAthensV2(), **transpile_opts)
 
         for idx, circ in enumerate(circuits):
             self.assertEqual(circ.count_ops()["sx"], idx * 2 + 2)

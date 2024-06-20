@@ -57,11 +57,9 @@ def _transpile_clifford_circuit(
 
 def _decompose_clifford_ops(circuit: QuantumCircuit) -> QuantumCircuit:
     # Simplified QuantumCircuit.decompose, which decomposes only Clifford ops
-    # Note that the resulting circuit depends on the input circuit,
-    # that means the changes on the input circuit may affect the resulting circuit.
-    # For example, the resulting circuit shares the parameter_table of the input circuit,
     res = circuit.copy_empty_like()
-    res._parameter_table = circuit._parameter_table
+    if hasattr(circuit, "_parameter_table"):
+        res._parameter_table = circuit._parameter_table
     for inst in circuit:
         if inst.operation.name.startswith("Clifford"):  # Decompose
             rule = inst.operation.definition.data
@@ -89,7 +87,8 @@ def _apply_qubit_layout(circuit: QuantumCircuit, physical_qubits: Sequence[int])
     for reg in circuit.cregs:
         res.add_register(reg)
     _circuit_compose(res, circuit, qubits=physical_qubits)
-    res._parameter_table = circuit._parameter_table
+    if hasattr(circuit, "_parameter_table"):
+        res._parameter_table = circuit._parameter_table
     return res
 
 

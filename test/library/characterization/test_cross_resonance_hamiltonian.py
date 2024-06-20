@@ -14,13 +14,15 @@
 
 """Spectroscopy tests."""
 from test.base import QiskitExperimentsTestCase
-from test.extended_equality import is_equivalent
 import functools
 import io
+from unittest.mock import patch
+
 import numpy as np
 from ddt import ddt, data, unpack
 
 from qiskit import QuantumCircuit, pulse, qpy, quantum_info as qi
+from qiskit.circuit import Gate
 
 # TODO: remove old path after we stop supporting the relevant version of Qiskit
 try:
@@ -32,36 +34,6 @@ from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime.fake_provider import FakeBogotaV2
 
 from qiskit_experiments.library.characterization import cr_hamiltonian
-
-
-def is_equivalent_circuit(circ1: QuantumCircuit, circ2: QuantumCircuit) -> bool:
-    """
-    Check if two circuits are structurally the same.
-    We use it due to the field 'operation' under 'circ.data[i]' wich its '__qe__'
-    method isn't good for reconstructed circuits (by using qpy) with custom pulse gates.
-    """
-    check = (
-        is_equivalent(circ1.calibrations, circ2.calibrations)
-        and is_equivalent(circ1.qregs, circ2.qregs)
-        and is_equivalent(circ1.qubits, circ2.qubits)
-    )
-
-    for data1, data2 in zip(circ1.data, circ2.data):
-        circ1_op = data1.operation
-        circ2_op = data2.operation
-        check = (
-            check
-            and is_equivalent(data1.clbits, data2.clbits)
-            and is_equivalent(data1.qubits, data2.qubits)
-            and is_equivalent(circ1_op.definition, circ2_op.definition)
-            and is_equivalent(circ1_op.name, circ2_op.name)
-            and is_equivalent(circ1_op.params, circ2_op.params)
-            and is_equivalent(circ1_op.unit, circ2_op.unit)
-            and is_equivalent(circ1_op.num_clbits, circ2_op.num_clbits)
-            and is_equivalent(circ1_op.num_qubits, circ2_op.num_qubits)
-        )
-
-    return check
 
 
 class SimulatableCRGate(HamiltonianGate):
@@ -302,48 +274,44 @@ class TestCrossResonanceHamiltonian(QiskitExperimentsTestCase):
         """Test generated circuits."""
         backend = FakeBogotaV2()
 
-        expr = cr_hamiltonian.CrossResonanceHamiltonian(
-            physical_qubits=(0, 1),
-            amp=0.1,
-            sigma=64,
-            risefall=2,
-        )
-        expr.backend = backend
-
-        with pulse.build(default_alignment="left", name="cr") as _:
-            pulse.play(
-                pulse.GaussianSquare(
-                    duration=1256,
-                    amp=0.1,
-                    sigma=64,
-                    width=1000,
-                ),
-                pulse.ControlChannel(0),
+        with patch.object(
+            cr_hamiltonian.CrossResonanceHamiltonian.CRPulseGate,
+            "base_class",
+            Gate,
+        ):
+            # Monkey patching the Instruction.base_class property of the CRPulseGate.
+            # QPY loader is not aware of Gate subclasses defined outside Qiskit core,
+            # and a Gate subclass instance is reconstructed as a Gate class instance.
+            # This results in the failure in comparison of structurally same circuits.
+            # In this context, CRPulseGate looks like a Gate class.
+            expr = cr_hamiltonian.CrossResonanceHamiltonian(
+                physical_qubits=(0, 1),
+                amp=0.1,
+                sigma=64,
+                risefall=2,
             )
-            pulse.delay(1256, pulse.DriveChannel(0))
-            pulse.delay(1256, pulse.DriveChannel(1))
+            expr.backend = backend
 
-        width_sec = 1000 * backend.dt
-        cr_gate = cr_hamiltonian.CrossResonanceHamiltonian.CRPulseGate(width=width_sec)
-        circuits = expr._transpiled_circuits()
+            width_sec = 1000 * backend.dt
+            cr_gate = cr_hamiltonian.CrossResonanceHamiltonian.CRPulseGate(width=width_sec)
+            circuits = expr._transpiled_circuits()
 
-        x0_circ = QuantumCircuit(2, 1)
-        x0_circ.append(cr_gate, [0, 1])
-        x0_circ.rz(np.pi / 2, 1)
-        x0_circ.sx(1)
-        x0_circ.measure(1, 0)
+            x0_circ = QuantumCircuit(2, 1)
+            x0_circ.append(cr_gate, [0, 1])
+            x0_circ.rz(np.pi / 2, 1)
+            x0_circ.sx(1)
+            x0_circ.measure(1, 0)
 
-        circuits.append(x0_circ)
+            circuits.append(x0_circ)
 
-        with io.BytesIO() as buff:
-            qpy.dump(circuits, buff)
-            buff.seek(0)
-            serialized_data = buff.read()
+            with io.BytesIO() as buff:
+                qpy.dump(circuits, buff)
+                buff.seek(0)
+                serialized_data = buff.read()
 
-        with io.BytesIO() as buff:
-            buff.write(serialized_data)
-            buff.seek(0)
-            decoded = qpy.load(buff)
+            with io.BytesIO() as buff:
+                buff.write(serialized_data)
+                buff.seek(0)
+                decoded = qpy.load(buff)
 
-        for circ1, circ2 in zip(circuits, decoded):
-            self.assertTrue(is_equivalent_circuit(circ1, circ2))
+            self.assertListEqual(circuits, decoded)

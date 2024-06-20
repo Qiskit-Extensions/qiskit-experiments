@@ -147,10 +147,10 @@ by a variant of the Hahn-echo pulse sequence [5]_.
 
     from qiskit_experiments.library import StarkRamseyXY
     from qiskit import schedule, pulse
-    from qiskit_ibm_runtime.fake_provider import FakeHanoi
+    from qiskit_ibm_runtime.fake_provider import FakeHanoiV2
     from qiskit.visualization.pulse_v2 import IQXSimple
 
-    backend = FakeHanoi()
+    backend = FakeHanoiV2()
     exp = StarkRamseyXY(
         physical_qubits=[0],
         backend=backend,
@@ -169,7 +169,7 @@ by a variant of the Hahn-echo pulse sequence [5]_.
         "formatter.label_offset.pulse_name": 0.1,
         "formatter.text_size.annotate": 14,
     }
-    ram_x_schedule.draw(time_range=(0, 1600), style=IQXSimple(**opt), backend=backend)
+    ram_x_schedule.draw(time_range=(0, 1600), style=IQXSimple(**opt))
 
 The qubit is initialized in the :math:`Y`-eigenstate with the first half-pi pulse.
 This state may be visualized by a Bloch vector located on the equator of the Bloch sphere,
